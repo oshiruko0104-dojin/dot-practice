@@ -20,10 +20,11 @@
   .settings select{font-size:15px;padding:4px}
   .boards{display:flex;gap:12px;margin-top:12px}
   .boards.col{flex-direction:column}
-  .board{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}
+  .board{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;position:relative}
   .board h2{font-size:14px;margin:0 0 6px;color:var(--muted);display:flex;justify-content:space-between}
   .canvasWrap{overflow:auto;max-width:100%;max-height:70vh;background:#eaeaea;border-radius:4px}
-  canvas{display:block;margin:0 auto;touch-action:none;background:#fff;box-shadow:0 0 0 1px #ccc}
+  /* 指1本のスクロールはブラウザに任せ、ピンチは自前で処理する */
+  canvas{display:block;margin:0 auto;touch-action:pan-x pan-y;background:#fff;box-shadow:0 0 0 1px #ccc;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
   .legend{margin-top:8px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
   .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
@@ -45,6 +46,14 @@
   th:first-child,td:first-child{text-align:left}
   th{background:#fafafa;color:var(--muted);font-weight:500}
   .empty{padding:16px;text-align:center;color:var(--muted)}
+  /* 十字キー オーバーレイ */
+  #dpad{position:absolute;right:16px;bottom:16px;display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:2px;z-index:1;touch-action:none;user-select:none;-webkit-user-select:none}
+  #dpad.left{right:auto;left:16px}
+  #dpad[hidden]{display:none}
+  #dpad button{padding:0;font-size:18px;border-radius:8px;background:rgba(255,255,255,.92);border:1px solid #bbb;box-shadow:0 1px 3px rgba(0,0,0,.2);touch-action:none}
+  #dpad button:active{background:#dbeafe}
+  #dpad .c{font-size:11px;color:var(--muted);line-height:1.1}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
 </style>
 </head>
 <body>
@@ -58,14 +67,14 @@
 <main>
   <section id="tab-practice">
     <div class="settings">
-      <label>許容誤差 <input type="number" id="tolerance" min="0" max="200" value="10"> px</label>
+      <label>許容誤差 <input type="number" id="tolerance" min="0" max="200" value="5"> px</label>
       <label>見本の点数 <input type="number" id="sampleCount" min="1" max="30" value="3"></label>
-      <label>回答の点数 <input type="number" id="answerCount" min="1" max="30" value="3"></label>
-      <label><input type="checkbox" id="gridOn" checked> グリッド</label>
+      <label>回答の点数 <input type="number" id="answerCount" min="1" max="30" value="1"></label>
+      <label><input type="checkbox" id="gridOn"> グリッド</label>
       <label>間隔 <select id="gridStep">
         <option value="10">10px</option><option value="20" selected>20px</option><option value="40">40px</option><option value="80">80px</option>
       </select></label>
-      <label>ズーム <input type="range" id="zoom" min="0.5" max="3" step="0.1" value="1"> <span id="zoomVal">100%</span></label>
+      <label>ズーム <input type="range" id="zoom" min="0.5" max="4" step="0.1" value="1"> <span id="zoomVal">100%</span></label>
       <label>配置 <select id="layoutMode">
         <option value="auto">自動</option><option value="row">左右</option><option value="col">上下</option>
       </select></label>
@@ -79,13 +88,19 @@
       <div class="board">
         <h2><span>回答欄</span><span id="answerInfo"></span></h2>
         <div class="canvasWrap"><canvas id="answerCanvas"></canvas></div>
+        <div id="dpad" hidden>
+          <span></span><button data-dx="0" data-dy="-1" title="上へ1px">▲</button><span></span>
+          <button data-dx="-1" data-dy="0" title="左へ1px">◀</button><button id="dpadCenter" class="c" title="左右の位置を入れ替え"></button><button data-dx="1" data-dy="0" title="右へ1px">▶</button>
+          <span></span><button data-dx="0" data-dy="1" title="下へ1px">▼</button><span></span>
+        </div>
       </div>
     </div>
     <div class="legend">
       <span><i style="background:#dc2626"></i>自分で打つ点</span>
       <span><i style="background:#2563eb"></i>配置済みの点（ヒント）</span>
-      <span><i style="background:#16a34a"></i>打った点（ドラッグで移動）</span>
+      <span><i style="background:#16a34a"></i>打った点</span>
     </div>
+    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）</div>
 
     <div class="status" id="status"></div>
     <div class="actions">
@@ -125,7 +140,8 @@
   const MARGIN = 24;      // 点を配置しない外周
   const DOT_R = 5;
   const MIN_DIST = 28;    // 見本の点同士の最小距離
-  const SKEY = 'dotPractice.settings';
+  const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
+  const SKEY = 'dotPractice.settings.v2';
   const RKEY = 'dotPractice.records';
 
   const $ = id => document.getElementById(id);
@@ -137,12 +153,13 @@
     sampleInfo: $('sampleInfo'), answerInfo: $('answerInfo'),
     status: $('status'), result: $('result'),
     btnScore: $('btnScore'), btnUndo: $('btnUndo'), btnClear: $('btnClear'), btnNext: $('btnNext'),
+    dpad: $('dpad'), dpadCenter: $('dpadCenter'),
     stProblems: $('stProblems'), stDots: $('stDots'), stCorrect: $('stCorrect'), stRate: $('stRate'), stTime: $('stTime'),
     recordsBody: $('recordsBody'), recordsEmpty: $('recordsEmpty'), btnClearRecords: $('btnClearRecords'),
   };
 
   // ---- 設定 ----
-  const defaults = { tolerance: 10, sampleCount: 3, answerCount: 3, gridOn: true, gridStep: 20, zoom: 1, layoutMode: 'auto' };
+  const defaults = { tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, zoom: 1, layoutMode: 'auto', dpadLeft: false };
   let settings = { ...defaults };
   try { Object.assign(settings, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
   function saveSettings() { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch (e) {} }
@@ -155,6 +172,7 @@
     els.zoom.value = settings.zoom;
     els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
     els.layoutMode.value = settings.layoutMode;
+    els.dpad.classList.toggle('left', !!settings.dpadLeft);
   }
 
   // ---- 状態 ----
@@ -162,6 +180,7 @@
     sample: [],        // 見本の点 [{x,y}]
     hint: new Set(),   // 回答欄に最初から配置される見本点のインデックス
     user: [],          // ユーザーが打った点
+    selected: null,    // 最後に打った／動かした点のインデックス（十字キーの対象）
     scored: false,
     result: null,
     // タイマー
@@ -197,6 +216,7 @@
     for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
     state.hint = new Set(idx.slice(0, n - a));
     state.user = [];
+    state.selected = null;
     state.scored = false;
     state.result = null;
     dragging = null;
@@ -263,8 +283,16 @@
         ctx.fillText(pr.d.toFixed(1) + 'px', pr.u.x + DOT_R + 2, pr.u.y - 2);
       }
     } else {
-      state.user.forEach(p => dot(ctx, p, '#16a34a'));
+      state.user.forEach((p, i) => {
+        dot(ctx, p, '#16a34a');
+        if (i === state.selected) {
+          // 選択中の点は輪で強調
+          ctx.beginPath(); ctx.arc(p.x, p.y, DOT_R + 3.5, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(22,163,74,.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+        }
+      });
     }
+    updateDpad();
   }
   function render() {
     renderSample();
@@ -284,6 +312,11 @@
     els.status.textContent = rest > 0
       ? `回答欄をタップして点を打ってください（あと${rest}点） ${t}`
       : `すべて打ちました。位置を調整するか「採点」を押してください。 ${t}`;
+  }
+  function updateDpad() {
+    const p = state.selected !== null ? state.user[state.selected] : null;
+    els.dpad.hidden = state.scored || !p;
+    if (p) els.dpadCenter.textContent = `${p.x},${p.y}`;
   }
   function renderResult() {
     if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
@@ -380,44 +413,174 @@
     return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
-  // ---- 回答欄の入力（タップ／ドラッグ） ----
-  function toLogical(e) {
+  // ---- 点の操作 ----
+  const clampL = v => Math.round(Math.min(L, Math.max(0, v)));
+  function toLogical(clientX, clientY) {
     const r = els.answerCanvas.getBoundingClientRect();
-    const x = (e.clientX - r.left) / settings.zoom, y = (e.clientY - r.top) / settings.zoom;
-    return { x: Math.round(Math.min(L, Math.max(0, x))), y: Math.round(Math.min(L, Math.max(0, y))) };
+    return { x: clampL((clientX - r.left) / settings.zoom), y: clampL((clientY - r.top) / settings.zoom) };
   }
+  // p の近く(半径 r 論理px)にある打った点のインデックス。なければ -1
+  function hitIndex(p, r) {
+    let best = -1, bestD = Infinity;
+    state.user.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= r && d < bestD) { best = i; bestD = d; } });
+    return best;
+  }
+  // 点を打つ。上限なら false
+  function placeAt(p) {
+    if (state.user.length >= targetCount()) {
+      els.status.textContent = '点の数が上限です。既存の点をなぞって動かすか、「最後の点を消す」を使ってください。';
+      return false;
+    }
+    state.user.push(p);
+    state.selected = state.user.length - 1;
+    return true;
+  }
+  function nudge(dx, dy) {
+    if (state.scored || state.selected === null) return;
+    const p = state.user[state.selected];
+    p.x = clampL(p.x + dx); p.y = clampL(p.y + dy);
+    renderAnswer();
+  }
+
+  // ---- 回答欄の入力（タップ／ドラッグ） ----
+  // タッチは「指を離した時に打つ」ことでスクロールと区別する（スクロールが始まると pointercancel が来る）
+  let pendingTap = null;
+  const activePointers = new Set();
   els.answerCanvas.addEventListener('pointerdown', e => {
     if (state.scored) return;
-    e.preventDefault();
-    const p = toLogical(e);
-    const hit = Math.max(DOT_R * 2, 14 / settings.zoom);
-    let best = -1, bestD = Infinity;
-    state.user.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= hit && d < bestD) { best = i; bestD = d; } });
-    if (best >= 0) {
-      dragging = best;
-    } else if (state.user.length < targetCount()) {
-      state.user.push(p); dragging = state.user.length - 1;
-    } else {
-      els.status.textContent = '点の数が上限です。既存の点をドラッグして動かすか、「最後の点を消す」を使ってください。';
+    activePointers.add(e.pointerId);
+    if (activePointers.size >= 2) { pendingTap = null; dragging = null; return; } // 2本指はズーム用
+    const p = toLogical(e.clientX, e.clientY);
+    const isTouch = e.pointerType === 'touch';
+    const hit = isTouch ? 24 / settings.zoom : Math.max(DOT_R * 2, 14 / settings.zoom);
+    const i = hitIndex(p, hit);
+    if (i >= 0) {
+      // 既存の点をドラッグ（タッチの場合 touchstart 側でスクロールを止めている）
+      dragging = i; state.selected = i;
+      try { els.answerCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+      renderAnswer();
       return;
     }
-    els.answerCanvas.setPointerCapture(e.pointerId);
+    if (isTouch) { pendingTap = { id: e.pointerId, p }; return; }
+    // マウス／ペンはその場で打ってそのままドラッグ
+    e.preventDefault();
+    if (placeAt(p)) {
+      dragging = state.user.length - 1;
+      try { els.answerCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    }
     render();
   });
   els.answerCanvas.addEventListener('pointermove', e => {
     if (dragging === null || state.scored) return;
     e.preventDefault();
-    state.user[dragging] = toLogical(e);
+    state.user[dragging] = toLogical(e.clientX, e.clientY);
     renderAnswer();
   });
-  const endDrag = () => { if (dragging !== null) { dragging = null; render(); } };
-  els.answerCanvas.addEventListener('pointerup', endDrag);
-  els.answerCanvas.addEventListener('pointercancel', endDrag);
+  els.answerCanvas.addEventListener('pointerup', e => {
+    activePointers.delete(e.pointerId);
+    if (dragging !== null) { dragging = null; render(); return; }
+    if (pendingTap && pendingTap.id === e.pointerId) {
+      const p = pendingTap.p; pendingTap = null;
+      if (!state.scored) { placeAt(p); render(); }
+    }
+  });
+  els.answerCanvas.addEventListener('pointercancel', e => {
+    activePointers.delete(e.pointerId);
+    if (pendingTap && pendingTap.id === e.pointerId) pendingTap = null;
+    if (dragging !== null) { dragging = null; render(); }
+  });
+  els.answerCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ---- タッチ：点の上ならスクロールを止めてドラッグ、2本指はピンチズーム ----
+  let pinch = null;
+  function onTouchStart(e) {
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      pendingTap = null; dragging = null;
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z0: settings.zoom, canvas: e.currentTarget };
+      return;
+    }
+    if (e.currentTarget === els.answerCanvas && !state.scored && e.touches.length === 1) {
+      const t = e.touches[0];
+      if (hitIndex(toLogical(t.clientX, t.clientY), 24 / settings.zoom) >= 0) e.preventDefault();
+    }
+  }
+  function onTouchMove(e) {
+    if (!pinch || e.touches.length < 2) return;
+    e.preventDefault();
+    const [a, b] = [e.touches[0], e.touches[1]];
+    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    setZoom(pinch.z0 * d / pinch.d0, { canvas: pinch.canvas, cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2 });
+  }
+  function onTouchEnd(e) { if (e.touches.length < 2) pinch = null; }
+  for (const c of [els.sampleCanvas, els.answerCanvas]) {
+    c.addEventListener('touchstart', onTouchStart, { passive: false });
+    c.addEventListener('touchmove', onTouchMove, { passive: false });
+    c.addEventListener('touchend', onTouchEnd);
+    c.addEventListener('touchcancel', onTouchEnd);
+  }
+
+  // ズーム変更。anchor を渡すとその画面位置の下にある点が動かないようにスクロールを補正する
+  let zoomRaf = null;
+  function setZoom(z, anchor) {
+    z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+    if (z === settings.zoom) return;
+    let fix = null;
+    if (anchor) {
+      const r = anchor.canvas.getBoundingClientRect();
+      fix = { wrap: anchor.canvas.parentElement, lx: (anchor.cx - r.left) / settings.zoom, ly: (anchor.cy - r.top) / settings.zoom, dz: z - settings.zoom };
+    }
+    settings.zoom = z;
+    els.zoom.value = z;
+    els.zoomVal.textContent = Math.round(z * 100) + '%';
+    if (zoomRaf) cancelAnimationFrame(zoomRaf);
+    zoomRaf = requestAnimationFrame(() => {
+      zoomRaf = null;
+      render();
+      if (fix) { fix.wrap.scrollLeft += fix.lx * fix.dz; fix.wrap.scrollTop += fix.ly * fix.dz; }
+      saveSettings();
+    });
+  }
+
+  // ---- 十字キー（オーバーレイ）と矢印キー ----
+  let repeatTimer = null, repeatDelay = null;
+  const stopRepeat = () => { clearTimeout(repeatDelay); clearInterval(repeatTimer); repeatDelay = repeatTimer = null; };
+  els.dpad.querySelectorAll('button[data-dx]').forEach(b => {
+    const dx = +b.dataset.dx, dy = +b.dataset.dy;
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      nudge(dx, dy);
+      stopRepeat();
+      // 長押しで連続移動
+      repeatDelay = setTimeout(() => { repeatTimer = setInterval(() => nudge(dx, dy), 60); }, 350);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stopRepeat);
+  });
+  els.dpadCenter.addEventListener('click', () => {
+    settings.dpadLeft = !settings.dpadLeft;
+    els.dpad.classList.toggle('left', settings.dpadLeft);
+    saveSettings();
+  });
+  document.addEventListener('keydown', e => {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const step = e.shiftKey ? 5 : 1;
+    const map = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] };
+    const d = map[e.key];
+    if (!d || state.scored || state.selected === null) return;
+    e.preventDefault();
+    nudge(d[0], d[1]);
+  });
 
   // ---- ボタン ----
   els.btnScore.addEventListener('click', score);
-  els.btnUndo.addEventListener('click', () => { if (!state.scored) { state.user.pop(); render(); } });
-  els.btnClear.addEventListener('click', () => { if (!state.scored) { state.user = []; render(); } });
+  els.btnUndo.addEventListener('click', () => {
+    if (state.scored) return;
+    state.user.pop();
+    state.selected = state.user.length ? state.user.length - 1 : null;
+    render();
+  });
+  els.btnClear.addEventListener('click', () => { if (!state.scored) { state.user = []; state.selected = null; render(); } });
   els.btnNext.addEventListener('click', newProblem);
   els.btnClearRecords.addEventListener('click', () => {
     if (confirm('記録をすべて削除しますか？')) { try { localStorage.removeItem(RKEY); } catch (e) {} renderRecords(); }
@@ -439,11 +602,7 @@
   els.answerCount.addEventListener('change', onCountChange);
   els.gridOn.addEventListener('change', () => { settings.gridOn = els.gridOn.checked; saveSettings(); render(); });
   els.gridStep.addEventListener('change', () => { settings.gridStep = parseInt(els.gridStep.value, 10); saveSettings(); render(); });
-  els.zoom.addEventListener('input', () => {
-    settings.zoom = parseFloat(els.zoom.value);
-    els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
-    saveSettings(); render();
-  });
+  els.zoom.addEventListener('input', () => setZoom(parseFloat(els.zoom.value)));
   els.layoutMode.addEventListener('change', () => { settings.layoutMode = els.layoutMode.value; saveSettings(); applyLayout(); });
   function applyLayout() {
     const m = settings.layoutMode;

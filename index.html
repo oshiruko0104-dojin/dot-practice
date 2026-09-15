@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>点打ち練習</title>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--fg:#222;--muted:#666;--accent:#2563eb;--border:#ddd}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--fg)}
+  header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2}
+  h1{font-size:18px;margin:0}
+  nav{display:flex;gap:6px}
+  nav button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  main{max-width:1100px;margin:0 auto;padding:12px}
+  section[hidden]{display:none}
+  .settings{display:flex;flex-wrap:wrap;gap:10px 18px;background:var(--card);padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;align-items:center}
+  .settings label{display:flex;align-items:center;gap:6px}
+  .settings input[type=number]{width:64px;font-size:16px;padding:4px}
+  .settings select{font-size:15px;padding:4px}
+  .boards{display:flex;gap:12px;margin-top:12px}
+  .boards.col{flex-direction:column}
+  .board{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px}
+  .board h2{font-size:14px;margin:0 0 6px;color:var(--muted);display:flex;justify-content:space-between}
+  .canvasWrap{overflow:auto;max-width:100%;max-height:70vh;background:#eaeaea;border-radius:4px}
+  canvas{display:block;margin:0 auto;touch-action:none;background:#fff;box-shadow:0 0 0 1px #ccc}
+  .legend{margin-top:8px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  button{font-size:15px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;color:var(--fg)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.danger{color:#dc2626;border-color:#dc2626}
+  button:disabled{opacity:.45;cursor:default}
+  .status{margin-top:8px;font-size:14px;color:var(--muted);min-height:1.4em}
+  #result{margin-top:10px;font-size:16px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;display:none}
+  #result.show{display:block}
+  .ok{color:#16a34a;font-weight:600} .ng{color:#dc2626;font-weight:600}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .card .v{font-size:22px;font-weight:600}
+  .card .k{font-size:12px;color:var(--muted)}
+  .tableWrap{overflow-x:auto;margin-top:12px;background:var(--card);border:1px solid var(--border);border-radius:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{border-bottom:1px solid var(--border);padding:6px 8px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{background:#fafafa;color:var(--muted);font-weight:500}
+  .empty{padding:16px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>点打ち練習</h1>
+  <nav>
+    <button data-tab="practice" class="active">練習</button>
+    <button data-tab="records">記録</button>
+  </nav>
+</header>
+<main>
+  <section id="tab-practice">
+    <div class="settings">
+      <label>許容誤差 <input type="number" id="tolerance" min="0" max="200" value="10"> px</label>
+      <label>見本の点数 <input type="number" id="sampleCount" min="1" max="30" value="3"></label>
+      <label>回答の点数 <input type="number" id="answerCount" min="1" max="30" value="3"></label>
+      <label><input type="checkbox" id="gridOn" checked> グリッド</label>
+      <label>間隔 <select id="gridStep">
+        <option value="10">10px</option><option value="20" selected>20px</option><option value="40">40px</option><option value="80">80px</option>
+      </select></label>
+      <label>ズーム <input type="range" id="zoom" min="0.5" max="3" step="0.1" value="1"> <span id="zoomVal">100%</span></label>
+      <label>配置 <select id="layoutMode">
+        <option value="auto">自動</option><option value="row">左右</option><option value="col">上下</option>
+      </select></label>
+    </div>
+
+    <div class="boards" id="boards">
+      <div class="board">
+        <h2><span>見本</span><span id="sampleInfo"></span></h2>
+        <div class="canvasWrap"><canvas id="sampleCanvas"></canvas></div>
+      </div>
+      <div class="board">
+        <h2><span>回答欄</span><span id="answerInfo"></span></h2>
+        <div class="canvasWrap"><canvas id="answerCanvas"></canvas></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#dc2626"></i>自分で打つ点</span>
+      <span><i style="background:#2563eb"></i>配置済みの点（ヒント）</span>
+      <span><i style="background:#16a34a"></i>打った点（ドラッグで移動）</span>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="actions">
+      <button id="btnScore" class="primary">採点</button>
+      <button id="btnUndo">最後の点を消す</button>
+      <button id="btnClear">回答をクリア</button>
+      <button id="btnNext">次の問題</button>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <section id="tab-records" hidden>
+    <div class="cards">
+      <div class="card"><div class="v" id="stProblems">0</div><div class="k">回答数（問題）</div></div>
+      <div class="card"><div class="v" id="stDots">0</div><div class="k">点の数（合計）</div></div>
+      <div class="card"><div class="v" id="stCorrect">0</div><div class="k">正答数（点）</div></div>
+      <div class="card"><div class="v" id="stRate">-</div><div class="k">正答率</div></div>
+      <div class="card"><div class="v" id="stTime">0秒</div><div class="k">合計時間</div></div>
+    </div>
+    <div class="tableWrap">
+      <table>
+        <thead><tr><th>日時</th><th>見本</th><th>回答</th><th>誤差</th><th>正答/点</th><th>平均ずれ</th><th>時間</th></tr></thead>
+        <tbody id="recordsBody"></tbody>
+      </table>
+      <div class="empty" id="recordsEmpty">まだ記録がありません</div>
+    </div>
+    <div class="actions">
+      <button id="btnClearRecords" class="danger">記録をすべて削除</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  // ---- 定数 ----
+  const L = 320;          // キャンバスの論理サイズ(px) 採点はこの座標系で行う
+  const MARGIN = 24;      // 点を配置しない外周
+  const DOT_R = 5;
+  const MIN_DIST = 28;    // 見本の点同士の最小距離
+  const SKEY = 'dotPractice.settings';
+  const RKEY = 'dotPractice.records';
+
+  const $ = id => document.getElementById(id);
+  const els = {
+    tolerance: $('tolerance'), sampleCount: $('sampleCount'), answerCount: $('answerCount'),
+    gridOn: $('gridOn'), gridStep: $('gridStep'), zoom: $('zoom'), zoomVal: $('zoomVal'),
+    layoutMode: $('layoutMode'), boards: $('boards'),
+    sampleCanvas: $('sampleCanvas'), answerCanvas: $('answerCanvas'),
+    sampleInfo: $('sampleInfo'), answerInfo: $('answerInfo'),
+    status: $('status'), result: $('result'),
+    btnScore: $('btnScore'), btnUndo: $('btnUndo'), btnClear: $('btnClear'), btnNext: $('btnNext'),
+    stProblems: $('stProblems'), stDots: $('stDots'), stCorrect: $('stCorrect'), stRate: $('stRate'), stTime: $('stTime'),
+    recordsBody: $('recordsBody'), recordsEmpty: $('recordsEmpty'), btnClearRecords: $('btnClearRecords'),
+  };
+
+  // ---- 設定 ----
+  const defaults = { tolerance: 10, sampleCount: 3, answerCount: 3, gridOn: true, gridStep: 20, zoom: 1, layoutMode: 'auto' };
+  let settings = { ...defaults };
+  try { Object.assign(settings, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
+  function saveSettings() { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch (e) {} }
+  function applySettingsToUI() {
+    els.tolerance.value = settings.tolerance;
+    els.sampleCount.value = settings.sampleCount;
+    els.answerCount.value = settings.answerCount;
+    els.gridOn.checked = settings.gridOn;
+    els.gridStep.value = String(settings.gridStep);
+    els.zoom.value = settings.zoom;
+    els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
+    els.layoutMode.value = settings.layoutMode;
+  }
+
+  // ---- 状態 ----
+  const state = {
+    sample: [],        // 見本の点 [{x,y}]
+    hint: new Set(),   // 回答欄に最初から配置される見本点のインデックス
+    user: [],          // ユーザーが打った点
+    scored: false,
+    result: null,
+    // タイマー
+    startAt: 0, accum: 0, running: false,
+  };
+  let dragging = null;
+
+  // ---- タイマー（タブが非表示の間は止める） ----
+  function timerStart() { state.accum = 0; state.startAt = performance.now(); state.running = true; }
+  function timerElapsed() { return state.accum + (state.running ? performance.now() - state.startAt : 0); }
+  function timerStop() { state.accum = timerElapsed(); state.running = false; return state.accum; }
+  document.addEventListener('visibilitychange', () => {
+    if (state.scored) return;
+    if (document.hidden) { state.accum = timerElapsed(); state.running = false; }
+    else { state.startAt = performance.now(); state.running = true; }
+  });
+  setInterval(() => { if (state.running) updateStatus(); }, 500);
+
+  // ---- 問題生成 ----
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function newProblem() {
+    const n = settings.sampleCount;
+    const a = Math.min(settings.answerCount, n);
+    const pts = [];
+    let tries = 0;
+    while (pts.length < n && tries++ < 5000) {
+      const p = { x: Math.round(rand(MARGIN, L - MARGIN)), y: Math.round(rand(MARGIN, L - MARGIN)) };
+      if (pts.every(q => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_DIST)) pts.push(p);
+    }
+    state.sample = pts;
+    // ヒント（配置済み）にする点をランダムに n-a 個選ぶ
+    const idx = pts.map((_, i) => i);
+    for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+    state.hint = new Set(idx.slice(0, n - a));
+    state.user = [];
+    state.scored = false;
+    state.result = null;
+    dragging = null;
+    timerStart();
+    render();
+  }
+  const targetCount = () => state.sample.length - state.hint.size;
+
+  // ---- 描画 ----
+  function setupCanvas(c) {
+    const dpr = window.devicePixelRatio || 1;
+    const z = settings.zoom;
+    c.width = Math.round(L * z * dpr);
+    c.height = Math.round(L * z * dpr);
+    c.style.width = (L * z) + 'px';
+    c.style.height = (L * z) + 'px';
+    const ctx = c.getContext('2d');
+    ctx.setTransform(z * dpr, 0, 0, z * dpr, 0, 0);
+    return ctx;
+  }
+  function drawBase(ctx) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, L, L);
+    if (settings.gridOn) {
+      const s = settings.gridStep;
+      ctx.lineWidth = 1 / settings.zoom;
+      for (let v = 0; v <= L; v += s) {
+        const major = (v % (s * 4)) === 0;
+        ctx.strokeStyle = major ? '#c8c8c8' : '#e6e6e6';
+        ctx.beginPath(); ctx.moveTo(v + 0.5, 0); ctx.lineTo(v + 0.5, L); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, v + 0.5); ctx.lineTo(L, v + 0.5); ctx.stroke();
+      }
+    }
+  }
+  function dot(ctx, p, color, hollow) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2);
+    if (hollow) { ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.stroke(); }
+    else { ctx.fillStyle = color; ctx.fill(); }
+  }
+  function renderSample() {
+    const ctx = setupCanvas(els.sampleCanvas);
+    drawBase(ctx);
+    state.sample.forEach((p, i) => dot(ctx, p, state.hint.has(i) ? '#2563eb' : '#dc2626'));
+  }
+  function renderAnswer() {
+    const ctx = setupCanvas(els.answerCanvas);
+    drawBase(ctx);
+    state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
+    if (state.scored && state.result) {
+      ctx.font = '11px sans-serif';
+      ctx.textBaseline = 'bottom';
+      for (const pr of state.result.pairs) {
+        const col = pr.ok ? '#16a34a' : '#dc2626';
+        // 正解位置（赤の輪）と許容範囲
+        ctx.beginPath(); ctx.arc(pr.t.x, pr.t.y, settings.tolerance, 0, Math.PI * 2);
+        ctx.strokeStyle = pr.ok ? 'rgba(22,163,74,.35)' : 'rgba(220,38,38,.35)'; ctx.lineWidth = 1; ctx.stroke();
+        dot(ctx, pr.t, '#dc2626', true);
+        // ずれの線
+        ctx.beginPath(); ctx.moveTo(pr.t.x, pr.t.y); ctx.lineTo(pr.u.x, pr.u.y);
+        ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
+        dot(ctx, pr.u, col);
+        ctx.fillStyle = col;
+        ctx.fillText(pr.d.toFixed(1) + 'px', pr.u.x + DOT_R + 2, pr.u.y - 2);
+      }
+    } else {
+      state.user.forEach(p => dot(ctx, p, '#16a34a'));
+    }
+  }
+  function render() {
+    renderSample();
+    renderAnswer();
+    els.sampleInfo.textContent = `${state.sample.length}点`;
+    els.answerInfo.textContent = `${state.user.length} / ${targetCount()}点`;
+    els.btnScore.disabled = state.scored || state.user.length < targetCount();
+    els.btnUndo.disabled = state.scored || state.user.length === 0;
+    els.btnClear.disabled = state.scored || state.user.length === 0;
+    updateStatus();
+    renderResult();
+  }
+  function updateStatus() {
+    const t = fmtTime(timerElapsed());
+    if (state.scored) { els.status.textContent = `採点済み（${t}）。「次の問題」で続けてください。`; return; }
+    const rest = targetCount() - state.user.length;
+    els.status.textContent = rest > 0
+      ? `回答欄をタップして点を打ってください（あと${rest}点） ${t}`
+      : `すべて打ちました。位置を調整するか「採点」を押してください。 ${t}`;
+  }
+  function renderResult() {
+    if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
+    const r = state.result;
+    const avg = r.pairs.length ? r.pairs.reduce((s, p) => s + p.d, 0) / r.pairs.length : 0;
+    const all = r.correct === r.total;
+    els.result.className = 'show';
+    els.result.innerHTML =
+      `<span class="${all ? 'ok' : 'ng'}">${all ? '全問正解！' : '惜しい'}</span>　` +
+      `正解 <b>${r.correct} / ${r.total}</b> 点（許容誤差 ${settings.tolerance}px）　` +
+      `平均ずれ ${avg.toFixed(1)}px　最大ずれ ${Math.max(0, ...r.pairs.map(p => p.d)).toFixed(1)}px　` +
+      `時間 ${fmtTime(r.ms)}`;
+  }
+
+  // ---- 採点 ----
+  function assign(T, U) {
+    const n = T.length;
+    const D = T.map(t => U.map(u => Math.hypot(t.x - u.x, t.y - u.y)));
+    if (n <= 8) {
+      // 総当たりで合計距離が最小の対応を求める
+      let best = null, bestSum = Infinity;
+      const used = new Array(n).fill(false), cur = [];
+      (function rec(i, sum) {
+        if (sum >= bestSum) return;
+        if (i === n) { bestSum = sum; best = cur.slice(); return; }
+        for (let j = 0; j < n; j++) {
+          if (used[j]) continue;
+          used[j] = true; cur.push(j);
+          rec(i + 1, sum + D[i][j]);
+          cur.pop(); used[j] = false;
+        }
+      })(0, 0);
+      return best.map((j, i) => ({ t: T[i], u: U[j], d: D[i][j] }));
+    }
+    // 点が多い場合は近い順に貪欲に対応付け
+    const all = [];
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) all.push([D[i][j], i, j]);
+    all.sort((a, b) => a[0] - b[0]);
+    const ut = new Set(), uu = new Set(), pairs = [];
+    for (const [d, i, j] of all) {
+      if (ut.has(i) || uu.has(j)) continue;
+      ut.add(i); uu.add(j); pairs.push({ t: T[i], u: U[j], d });
+    }
+    return pairs;
+  }
+  function score() {
+    const targets = state.sample.filter((_, i) => !state.hint.has(i));
+    if (state.user.length < targets.length) return;
+    const pairs = assign(targets, state.user).map(p => ({ ...p, ok: p.d <= settings.tolerance }));
+    const correct = pairs.filter(p => p.ok).length;
+    const ms = timerStop();
+    state.scored = true;
+    state.result = { pairs, correct, total: targets.length, ms };
+    addRecord({
+      t: Date.now(), sample: state.sample.length, answer: targets.length, tol: settings.tolerance,
+      correct, dots: targets.length, avg: pairs.reduce((s, p) => s + p.d, 0) / pairs.length, ms,
+    });
+    render();
+  }
+
+  // ---- 記録 ----
+  function loadRecords() { try { return JSON.parse(localStorage.getItem(RKEY) || '[]'); } catch (e) { return []; } }
+  function addRecord(r) {
+    const recs = loadRecords(); recs.push(r);
+    try { localStorage.setItem(RKEY, JSON.stringify(recs)); } catch (e) {}
+    renderRecords();
+  }
+  function renderRecords() {
+    const recs = loadRecords();
+    const problems = recs.length;
+    const dots = recs.reduce((s, r) => s + r.dots, 0);
+    const correct = recs.reduce((s, r) => s + r.correct, 0);
+    const ms = recs.reduce((s, r) => s + r.ms, 0);
+    els.stProblems.textContent = problems;
+    els.stDots.textContent = dots;
+    els.stCorrect.textContent = correct;
+    els.stRate.textContent = dots ? Math.round(correct / dots * 100) + '%' : '-';
+    els.stTime.textContent = fmtTime(ms);
+    els.recordsEmpty.style.display = problems ? 'none' : '';
+    const rows = recs.slice().reverse().slice(0, 200).map(r =>
+      `<tr><td>${fmtDate(r.t)}</td><td>${r.sample}</td><td>${r.answer}</td><td>${r.tol}px</td>` +
+      `<td class="${r.correct === r.dots ? 'ok' : ''}">${r.correct} / ${r.dots}</td>` +
+      `<td>${(r.avg ?? 0).toFixed(1)}px</td><td>${fmtTime(r.ms)}</td></tr>`);
+    els.recordsBody.innerHTML = rows.join('');
+  }
+  function fmtTime(ms) {
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    if (h) return `${h}時間${m}分${sec}秒`;
+    if (m) return `${m}分${sec}秒`;
+    return `${sec}秒`;
+  }
+  function fmtDate(t) {
+    const d = new Date(t), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // ---- 回答欄の入力（タップ／ドラッグ） ----
+  function toLogical(e) {
+    const r = els.answerCanvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / settings.zoom, y = (e.clientY - r.top) / settings.zoom;
+    return { x: Math.round(Math.min(L, Math.max(0, x))), y: Math.round(Math.min(L, Math.max(0, y))) };
+  }
+  els.answerCanvas.addEventListener('pointerdown', e => {
+    if (state.scored) return;
+    e.preventDefault();
+    const p = toLogical(e);
+    const hit = Math.max(DOT_R * 2, 14 / settings.zoom);
+    let best = -1, bestD = Infinity;
+    state.user.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= hit && d < bestD) { best = i; bestD = d; } });
+    if (best >= 0) {
+      dragging = best;
+    } else if (state.user.length < targetCount()) {
+      state.user.push(p); dragging = state.user.length - 1;
+    } else {
+      els.status.textContent = '点の数が上限です。既存の点をドラッグして動かすか、「最後の点を消す」を使ってください。';
+      return;
+    }
+    els.answerCanvas.setPointerCapture(e.pointerId);
+    render();
+  });
+  els.answerCanvas.addEventListener('pointermove', e => {
+    if (dragging === null || state.scored) return;
+    e.preventDefault();
+    state.user[dragging] = toLogical(e);
+    renderAnswer();
+  });
+  const endDrag = () => { if (dragging !== null) { dragging = null; render(); } };
+  els.answerCanvas.addEventListener('pointerup', endDrag);
+  els.answerCanvas.addEventListener('pointercancel', endDrag);
+
+  // ---- ボタン ----
+  els.btnScore.addEventListener('click', score);
+  els.btnUndo.addEventListener('click', () => { if (!state.scored) { state.user.pop(); render(); } });
+  els.btnClear.addEventListener('click', () => { if (!state.scored) { state.user = []; render(); } });
+  els.btnNext.addEventListener('click', newProblem);
+  els.btnClearRecords.addEventListener('click', () => {
+    if (confirm('記録をすべて削除しますか？')) { try { localStorage.removeItem(RKEY); } catch (e) {} renderRecords(); }
+  });
+
+  // ---- 設定の変更 ----
+  const clampInt = (v, min, max, def) => { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def; };
+  els.tolerance.addEventListener('change', () => {
+    settings.tolerance = clampInt(els.tolerance.value, 0, 200, defaults.tolerance);
+    els.tolerance.value = settings.tolerance; saveSettings(); render();
+  });
+  function onCountChange() {
+    settings.sampleCount = clampInt(els.sampleCount.value, 1, 30, defaults.sampleCount);
+    settings.answerCount = clampInt(els.answerCount.value, 1, settings.sampleCount, defaults.answerCount);
+    els.sampleCount.value = settings.sampleCount; els.answerCount.value = settings.answerCount;
+    saveSettings(); newProblem();
+  }
+  els.sampleCount.addEventListener('change', onCountChange);
+  els.answerCount.addEventListener('change', onCountChange);
+  els.gridOn.addEventListener('change', () => { settings.gridOn = els.gridOn.checked; saveSettings(); render(); });
+  els.gridStep.addEventListener('change', () => { settings.gridStep = parseInt(els.gridStep.value, 10); saveSettings(); render(); });
+  els.zoom.addEventListener('input', () => {
+    settings.zoom = parseFloat(els.zoom.value);
+    els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
+    saveSettings(); render();
+  });
+  els.layoutMode.addEventListener('change', () => { settings.layoutMode = els.layoutMode.value; saveSettings(); applyLayout(); });
+  function applyLayout() {
+    const m = settings.layoutMode;
+    const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);
+    els.boards.classList.toggle('col', col);
+  }
+  window.addEventListener('resize', applyLayout);
+
+  // ---- タブ ----
+  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+    $('tab-practice').hidden = b.dataset.tab !== 'practice';
+    $('tab-records').hidden = b.dataset.tab !== 'records';
+    if (b.dataset.tab === 'records') renderRecords();
+  }));
+
+  // ---- 初期化 ----
+  applySettingsToUI();
+  applyLayout();
+  renderRecords();
+  newProblem();
+})();
+</script>
+</body>
+</html>

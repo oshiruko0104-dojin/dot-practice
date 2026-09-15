@@ -99,6 +99,7 @@
       <span><i style="background:#dc2626"></i>自分で打つ点</span>
       <span><i style="background:#2563eb"></i>配置済みの点（ヒント）</span>
       <span><i style="background:#16a34a"></i>打った点</span>
+      <span><i style="background:#4dcb7b"></i>選択中の点（十字キー・矢印キーで動く）</span>
     </div>
     <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）</div>
 
@@ -283,14 +284,8 @@
         ctx.fillText(pr.d.toFixed(1) + 'px', pr.u.x + DOT_R + 2, pr.u.y - 2);
       }
     } else {
-      state.user.forEach((p, i) => {
-        dot(ctx, p, '#16a34a');
-        if (i === state.selected) {
-          // 選択中の点は輪で強調
-          ctx.beginPath(); ctx.arc(p.x, p.y, DOT_R + 3.5, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(22,163,74,.6)'; ctx.lineWidth = 1.5; ctx.stroke();
-        }
-      });
+      // 選択中の点は色だけ変える（輪などを付けるとバランス確認の邪魔になるため）
+      state.user.forEach((p, i) => dot(ctx, p, i === state.selected ? '#4dcb7b' : '#16a34a'));
     }
     updateDpad();
   }

@@ -108,7 +108,7 @@
       <label class="only3d"><input type="checkbox" id="rotate3d"> 回転</label>
       <span class="sep"></span>
       <!-- 共通 -->
-      <label>ズーム <input type="range" id="zoom" min="0.5" max="4" step="0.1" value="1"> <span id="zoomVal">100%</span></label>
+      <label>ズーム <input type="range" id="zoom" min="0.25" max="4" step="0.05" value="1"> <span id="zoomVal">100%</span></label>
       <label><input type="checkbox" id="soundOn" checked> サウンド</label>
       <label>音量 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7"></label>
       <label id="vibrateLabel"><input type="checkbox" id="vibrateOn" checked> バイブ</label>
@@ -148,9 +148,9 @@
       <span><i class="line" style="background:#7c3aed"></i>正面方向（立方体の中心から1タイル分・傾きも反映）</span>
       <span><i style="background:#16a34a"></i>打った点</span>
       <span><i style="background:#4dcb7b"></i>選択中の点</span>
-      <span><i class="line" style="background:#94a3b8"></i>自動でつないだ辺</span>
+      <span><i class="line" style="background:#94a3b8"></i>自動でつないだ辺（奥の辺は破線）</span>
     </div>
-    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動／「線」ボタンはタップで切替・ドラッグで移動</div>
+    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動／「線」ボタンはタップで切替・ドラッグで移動（枠の外にも置ける。設定でOFF→ONにすると位置が初期化）</div>
 
     <div class="status" id="status"></div>
     <div class="actions">
@@ -196,7 +196,7 @@
   const MARGIN = 24;      // 点を配置しない外周
   const DOT_R = 5;
   const MIN_DIST = 28;    // 2D: 見本の点同士の最小距離
-  const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 4;
   const SKEY = 'dotPractice.settings.v2';
   const RKEY = 'dotPractice.records';
   const LKEY = 'dotPractice.levels';
@@ -463,6 +463,15 @@
       const center = { x: base.x + up.x, y: base.y + up.y, z: base.z + up.z };
       const front = rot({ x: 0, y: 0, z: 1 });
       const tip = { x: center.x + front.x, y: center.y + front.y, z: center.z + front.z };
+      const exit = { x: center.x + front.x * 0.5, y: center.y + front.y * 0.5, z: center.z + front.z * 0.5 }; // 正面の面の中心
+      // 6つの面（bit=軸, val=その軸の +/-）。法線と中心は前後判定に使う
+      const faces = [];
+      for (const [bit, axis] of [[0, { x: 1, y: 0, z: 0 }], [1, { x: 0, y: 1, z: 0 }], [2, { x: 0, y: 0, z: 1 }]]) {
+        for (const val of [0, 1]) {
+          const n = rot({ x: axis.x * (val ? 1 : -1), y: axis.y * (val ? 1 : -1), z: axis.z * (val ? 1 : -1) });
+          faces.push({ bit, val, normal: n, center: { x: center.x + n.x * 0.5, y: center.y + n.y * 0.5, z: center.z + n.z * 0.5 } });
+        }
+      }
       // カメラ：大きさと角度はランダム
       const size = rand(55, 115);            // 立方体1辺のおおよその画面サイズ(px)
       const dist = focal / size;
@@ -474,7 +483,7 @@
       const inside = pv.every(p => p && p.x >= MARGIN && p.x <= L - MARGIN && p.y >= MARGIN && p.y <= L - MARGIN);
       let minD = Infinity;
       if (inside) for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) minD = Math.min(minD, Math.hypot(pv[i].x - pv[j].x, pv[i].y - pv[j].y));
-      const cand = { camera, verts, pv, center, tip, score: inside ? minD : -1 };
+      const cand = { camera, camPos, verts, pv, center, tip, exit, faces, score: inside ? minD : -1 };
       if (!best || cand.score > best.score) best = cand;
       if (inside && minD >= 12) break;   // 頂点同士が画面上で近すぎない構図なら採用
     }
@@ -535,6 +544,18 @@
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
   }
+  // 3D: 面がカメラ側を向いているか
+  function faceVisible(sc, f) { return v3.dot(f.normal, v3.sub(sc.camPos, f.center)) > 0; }
+  // 3D: 辺が手前（見えている面に属する）か。奥の辺は破線で描く
+  function edgeIsFront(sc, a, b) {
+    return sc.faces.some(f => ((a >> f.bit) & 1) === f.val && ((b >> f.bit) & 1) === f.val && faceVisible(sc, f));
+  }
+  function edge3D(ctx, sc, a, b, pa, pb, color, width) {
+    const front = edgeIsFront(sc, a, b);
+    ctx.setLineDash(front ? [] : [4, 3]);
+    line(ctx, pa, pb, color, front ? width : Math.max(0.8, width * 0.8));
+    ctx.setLineDash([]);
+  }
   // 3D: 床グリッドと正面方向の矢印
   function drawScene3D(ctx) {
     const sc = state.scene;
@@ -547,16 +568,37 @@
         if (s) line(ctx, s[0], s[1], '#d4d4d8', 1 / settings.zoom);
       }
     }
-    // 正面方向の矢印（立方体の中心から1タイル分）
-    const s = sc.camera.segment(sc.center, sc.tip);
-    if (s) {
-      const [p0, p1] = s;
+    // 正面の面：4頂点がすべて配置済みのときだけ透過で塗る（未配置の頂点位置を漏らさないため）
+    const frontFace = sc.faces.find(f => f.bit === 2 && f.val === 1);
+    const frontVerts = [0, 1, 2, 3, 4, 5, 6, 7].filter(i => (i & 4));
+    if (state.scored || frontVerts.every(i => state.hint.has(i))) {
+      const order = [4, 5, 7, 6]; // 面を一周する順
+      ctx.beginPath();
+      order.forEach((i, k) => { const p = state.sample[i]; k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+      ctx.closePath();
+      ctx.fillStyle = faceVisible(sc, frontFace) ? 'rgba(124,58,237,.14)' : 'rgba(124,58,237,.06)';
+      ctx.fill();
+    }
+    // 正面方向の矢印：立方体の内側は細い破線、面を突き抜けた先は太い実線
+    const inner = sc.camera.segment(sc.center, sc.exit);
+    const outer = sc.camera.segment(sc.exit, sc.tip);
+    if (inner) {
+      ctx.setLineDash([3, 3]);
+      line(ctx, inner[0], inner[1], 'rgba(124,58,237,.7)', 1.2);
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(inner[0].x, inner[0].y, 3, 0, Math.PI * 2); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    if (outer) {
+      const [p0, p1] = outer;
       line(ctx, p0, p1, '#7c3aed', 2);
       const ang = Math.atan2(p1.y - p0.y, p1.x - p0.x), h = 8;
       for (const d of [Math.PI * 0.8, -Math.PI * 0.8]) {
         line(ctx, p1, { x: p1.x + h * Math.cos(ang + d), y: p1.y + h * Math.sin(ang + d) }, '#7c3aed', 2);
       }
-      ctx.beginPath(); ctx.arc(p0.x, p0.y, 3, 0, Math.PI * 2); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.5; ctx.stroke();
+      // 面を突き抜ける点に ×
+      const c = 4;
+      line(ctx, { x: p0.x - c, y: p0.y - c }, { x: p0.x + c, y: p0.y + c }, '#7c3aed', 1.5);
+      line(ctx, { x: p0.x - c, y: p0.y + c }, { x: p0.x + c, y: p0.y - c }, '#7c3aed', 1.5);
     }
   }
   // 2D: 点を重心まわりの角度順に結んで多角形にする（3点=三角形、4点=四角形…）
@@ -591,11 +633,11 @@
       // 判明している頂点同士を辺でつなぐ（採点後は正解の立方体を薄く表示）
       const pos = new Array(8).fill(null);
       if (state.scored) {
-        for (const [a, b] of CUBE_EDGES) line(ctx, state.sample[a], state.sample[b], 'rgba(220,38,38,.3)', 1);
+        for (const [a, b] of CUBE_EDGES) edge3D(ctx, state.scene, a, b, state.sample[a], state.sample[b], 'rgba(220,38,38,.35)', 1);
       } else {
         state.sample.forEach((p, i) => { if (state.hint.has(i)) pos[i] = p; });
         guessVertexOf().forEach((v, i) => { pos[v] = state.user[i]; });
-        for (const [a, b] of CUBE_EDGES) if (pos[a] && pos[b]) line(ctx, pos[a], pos[b], '#94a3b8', 1.2);
+        for (const [a, b] of CUBE_EDGES) if (pos[a] && pos[b]) edge3D(ctx, state.scene, a, b, pos[a], pos[b], '#94a3b8', 1.4);
       }
     }
     if (showLines()) {
@@ -655,11 +697,16 @@
   function applyDpadPos() {
     const pos = settings.dpadPos;
     if (!pos) { els.dpad.style.left = els.dpad.style.top = ''; els.dpad.style.right = els.dpad.style.bottom = '16px'; return; }
-    const board = els.dpad.parentElement;
-    const maxX = Math.max(0, board.clientWidth - els.dpad.offsetWidth), maxY = Math.max(0, board.clientHeight - els.dpad.offsetHeight);
+    const c = clampToViewport(els.dpad, pos);
     els.dpad.style.right = els.dpad.style.bottom = 'auto';
-    els.dpad.style.left = Math.min(maxX, Math.max(0, pos.x)) + 'px';
-    els.dpad.style.top = Math.min(maxY, Math.max(0, pos.y)) + 'px';
+    els.dpad.style.left = c.x + 'px';
+    els.dpad.style.top = c.y + 'px';
+  }
+  // オーバーレイはボードの枠の外にも出せる。画面の左右からはみ出さない範囲に収める
+  function clampToViewport(el, pos) {
+    const b = el.parentElement.getBoundingClientRect();
+    const minX = -b.left, maxX = window.innerWidth - b.left - el.offsetWidth;
+    return { x: Math.min(maxX, Math.max(minX, pos.x)), y: pos.y };
   }
   function renderResult() {
     if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
@@ -926,10 +973,9 @@
     els.btnLines.classList.toggle('on', settings.linesOn);
     const pos = settings.linePos;
     if (!pos) { els.lineUI.style.left = '16px'; els.lineUI.style.top = '40px'; return; }
-    const board = els.lineUI.parentElement;
-    const maxX = Math.max(0, board.clientWidth - els.lineUI.offsetWidth), maxY = Math.max(0, board.clientHeight - els.lineUI.offsetHeight);
-    els.lineUI.style.left = Math.min(maxX, Math.max(0, pos.x)) + 'px';
-    els.lineUI.style.top = Math.min(maxY, Math.max(0, pos.y)) + 'px';
+    const c = clampToViewport(els.lineUI, pos);
+    els.lineUI.style.left = c.x + 'px';
+    els.lineUI.style.top = c.y + 'px';
   }
   let lineDrag = null;
   els.btnLines.addEventListener('pointerdown', e => {
@@ -952,7 +998,7 @@
   };
   els.btnLines.addEventListener('pointerup', endLineDrag);
   els.btnLines.addEventListener('pointercancel', endLineDrag);
-  els.linesUI.addEventListener('change', () => { settings.linesUI = els.linesUI.checked; saveSettings(); updateLineUI(); render(); });
+  els.linesUI.addEventListener('change', () => { settings.linesUI = els.linesUI.checked; if (settings.linesUI) settings.linePos = null; saveSettings(); updateLineUI(); render(); });
 
   // 中央をドラッグで十字キー全体を移動
   let dpadDrag = null;
@@ -1035,7 +1081,7 @@
   els.soundOn.addEventListener('change', () => { settings.sound = els.soundOn.checked; saveSettings(); if (settings.sound) playSound('place'); });
   els.volume.addEventListener('change', () => { settings.volume = +els.volume.value; saveSettings(); playSound('place'); });
   els.vibrateOn.addEventListener('change', () => { settings.vibrate = els.vibrateOn.checked; saveSettings(); vibrate('place'); });
-  els.dpadOn.addEventListener('change', () => { settings.dpadOn = els.dpadOn.checked; saveSettings(); updateDpad(); });
+  els.dpadOn.addEventListener('change', () => { settings.dpadOn = els.dpadOn.checked; if (settings.dpadOn) settings.dpadPos = null; saveSettings(); updateDpad(); });
   function applyLayout() {
     const m = settings.layoutMode;
     const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);

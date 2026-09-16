@@ -56,11 +56,10 @@
   .empty{padding:16px;text-align:center;color:var(--muted)}
   /* 十字キー オーバーレイ */
   #dpad{position:absolute;right:16px;bottom:16px;display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:2px;z-index:1;touch-action:none;user-select:none;-webkit-user-select:none}
-  #dpad.left{right:auto;left:16px}
   #dpad[hidden]{display:none}
   #dpad button{padding:0;font-size:18px;border-radius:8px;background:rgba(255,255,255,.92);border:1px solid #bbb;box-shadow:0 1px 3px rgba(0,0,0,.2);touch-action:none}
   #dpad button:active{background:#dbeafe}
-  #dpad .c{font-size:11px;color:var(--muted);line-height:1.1}
+  #dpad .c{font-size:11px;color:var(--muted);line-height:1.1;cursor:move;background:rgba(243,244,246,.95)}
   .hint{font-size:12px;color:var(--muted);margin-top:6px}
   /* 演出 */
   #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
@@ -107,6 +106,7 @@
       <label><input type="checkbox" id="soundOn" checked> サウンド</label>
       <label>音量 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7"></label>
       <label id="vibrateLabel"><input type="checkbox" id="vibrateOn" checked> バイブ</label>
+      <label><input type="checkbox" id="dpadOn" checked> 十字キー</label>
     </div>
 
     <div class="levelbar">
@@ -125,7 +125,7 @@
         <div class="canvasWrap"><canvas id="answerCanvas" class="board-canvas"></canvas></div>
         <div id="dpad" hidden>
           <span></span><button data-dx="0" data-dy="-1" title="上へ1px">▲</button><span></span>
-          <button data-dx="-1" data-dy="0" title="左へ1px">◀</button><button id="dpadCenter" class="c" title="左右の位置を入れ替え"></button><button data-dx="1" data-dy="0" title="右へ1px">▶</button>
+          <button data-dx="-1" data-dy="0" title="左へ1px">◀</button><button id="dpadCenter" class="c" title="ドラッグで十字キーを移動"></button><button data-dx="1" data-dy="0" title="右へ1px">▶</button>
           <span></span><button data-dx="0" data-dy="1" title="下へ1px">▼</button><span></span>
         </div>
       </div>
@@ -143,7 +143,7 @@
       <span><i style="background:#4dcb7b"></i>選択中の点</span>
       <span><i class="line" style="background:#94a3b8"></i>自動でつないだ辺</span>
     </div>
-    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）</div>
+    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動</div>
 
     <div class="status" id="status"></div>
     <div class="actions">
@@ -203,7 +203,7 @@
     gridOn: $('gridOn'), gridStep: $('gridStep'), zoom: $('zoom'), zoomVal: $('zoomVal'),
     layoutMode: $('layoutMode'), boards: $('boards'),
     tol3d: $('tol3d'), count3d: $('count3d'), fov: $('fov'), fovVal: $('fovVal'), offset3d: $('offset3d'), tilt3d: $('tilt3d'), rotate3d: $('rotate3d'),
-    soundOn: $('soundOn'), volume: $('volume'), vibrateOn: $('vibrateOn'), vibrateLabel: $('vibrateLabel'),
+    soundOn: $('soundOn'), volume: $('volume'), vibrateOn: $('vibrateOn'), vibrateLabel: $('vibrateLabel'), dpadOn: $('dpadOn'),
     lvLabel: $('lvLabel'), lvFill: $('lvFill'), lvProg: $('lvProg'),
     sampleCanvas: $('sampleCanvas'), answerCanvas: $('answerCanvas'),
     sampleInfo: $('sampleInfo'), answerInfo: $('answerInfo'), answerTitle: $('answerTitle'),
@@ -220,7 +220,7 @@
     mode: '2d',
     tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto',
     tol3d: 8, count3d: 1, fov: 50, offset3d: true, tilt3d: false, rotate3d: false,
-    zoom: 1, dpadLeft: false, sound: true, volume: 0.7, vibrate: true,
+    zoom: 1, dpadOn: true, dpadPos: null, sound: true, volume: 0.7, vibrate: true,
   };
   let settings = { ...defaults };
   try { Object.assign(settings, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
@@ -246,7 +246,7 @@
     els.volume.value = settings.volume;
     els.vibrateOn.checked = settings.vibrate;
     els.vibrateLabel.style.display = ('vibrate' in navigator) ? '' : 'none';
-    els.dpad.classList.toggle('left', !!settings.dpadLeft);
+    els.dpadOn.checked = settings.dpadOn;
     applyMode();
   }
   function applyMode() {
@@ -619,8 +619,19 @@
   }
   function updateDpad() {
     const p = state.selected !== null ? state.user[state.selected] : null;
-    els.dpad.hidden = state.scored || !p;
+    els.dpad.hidden = !settings.dpadOn || state.scored || !p;
     if (p) els.dpadCenter.textContent = `${p.x},${p.y}`;
+    if (!els.dpad.hidden) applyDpadPos();
+  }
+  // 十字キーの位置（ボード左上からのpx）。未設定なら右下
+  function applyDpadPos() {
+    const pos = settings.dpadPos;
+    if (!pos) { els.dpad.style.left = els.dpad.style.top = ''; els.dpad.style.right = els.dpad.style.bottom = '16px'; return; }
+    const board = els.dpad.parentElement;
+    const maxX = Math.max(0, board.clientWidth - els.dpad.offsetWidth), maxY = Math.max(0, board.clientHeight - els.dpad.offsetHeight);
+    els.dpad.style.right = els.dpad.style.bottom = 'auto';
+    els.dpad.style.left = Math.min(maxX, Math.max(0, pos.x)) + 'px';
+    els.dpad.style.top = Math.min(maxY, Math.max(0, pos.y)) + 'px';
   }
   function renderResult() {
     if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
@@ -880,11 +891,22 @@
     });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stopRepeat);
   });
-  els.dpadCenter.addEventListener('click', () => {
-    settings.dpadLeft = !settings.dpadLeft;
-    els.dpad.classList.toggle('left', settings.dpadLeft);
-    saveSettings();
+  // 中央をドラッグで十字キー全体を移動
+  let dpadDrag = null;
+  els.dpadCenter.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const r = els.dpad.getBoundingClientRect(), b = els.dpad.parentElement.getBoundingClientRect();
+    dpadDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, bx: b.left, by: b.top };
+    try { els.dpadCenter.setPointerCapture(e.pointerId); } catch (err) {}
   });
+  els.dpadCenter.addEventListener('pointermove', e => {
+    if (!dpadDrag || dpadDrag.id !== e.pointerId) return;
+    settings.dpadPos = { x: e.clientX - dpadDrag.dx - dpadDrag.bx, y: e.clientY - dpadDrag.dy - dpadDrag.by };
+    applyDpadPos();
+  });
+  const endDpadDrag = e => { if (dpadDrag && dpadDrag.id === e.pointerId) { dpadDrag = null; saveSettings(); } };
+  els.dpadCenter.addEventListener('pointerup', endDpadDrag);
+  els.dpadCenter.addEventListener('pointercancel', endDpadDrag);
   document.addEventListener('keydown', e => {
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     const step = e.shiftKey ? 5 : 1;
@@ -950,12 +972,13 @@
   els.soundOn.addEventListener('change', () => { settings.sound = els.soundOn.checked; saveSettings(); if (settings.sound) playSound('place'); });
   els.volume.addEventListener('change', () => { settings.volume = +els.volume.value; saveSettings(); playSound('place'); });
   els.vibrateOn.addEventListener('change', () => { settings.vibrate = els.vibrateOn.checked; saveSettings(); vibrate('place'); });
+  els.dpadOn.addEventListener('change', () => { settings.dpadOn = els.dpadOn.checked; saveSettings(); updateDpad(); });
   function applyLayout() {
     const m = settings.layoutMode;
     const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);
     els.boards.classList.toggle('col', col);
   }
-  window.addEventListener('resize', applyLayout);
+  window.addEventListener('resize', () => { applyLayout(); updateDpad(); });
 
   // ---- タブ／モード ----
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {

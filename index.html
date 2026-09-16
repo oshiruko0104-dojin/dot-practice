@@ -61,6 +61,11 @@
   #dpad button:active{background:#dbeafe}
   #dpad .c{font-size:11px;color:var(--muted);line-height:1.1;cursor:move;background:rgba(243,244,246,.95)}
   .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  /* 線表示の切替オーバーレイ */
+  #lineUI{position:absolute;left:16px;top:40px;z-index:1;touch-action:none;user-select:none;-webkit-user-select:none}
+  #lineUI[hidden]{display:none}
+  #lineUI button{padding:8px 12px;font-size:14px;border-radius:20px;background:rgba(255,255,255,.92);border:1px solid #bbb;box-shadow:0 1px 3px rgba(0,0,0,.2);touch-action:none;cursor:move}
+  #lineUI button.on{background:#dcfce7;border-color:#16a34a;color:#166534}
   /* 演出 */
   #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
   #confetti[hidden]{display:none}
@@ -90,6 +95,7 @@
       <label class="only2d">間隔 <select id="gridStep">
         <option value="10">10px</option><option value="20" selected>20px</option><option value="40">40px</option><option value="80">80px</option>
       </select></label>
+      <label class="only2d"><input type="checkbox" id="linesUI"> 線表示UI</label>
       <label class="only2d">配置 <select id="layoutMode">
         <option value="auto">自動</option><option value="row">左右</option><option value="col">上下</option>
       </select></label>
@@ -123,6 +129,7 @@
       <div class="board">
         <h2><span id="answerTitle">回答欄</span><span id="answerInfo"></span></h2>
         <div class="canvasWrap"><canvas id="answerCanvas" class="board-canvas"></canvas></div>
+        <div id="lineUI" hidden><button id="btnLines">線 ON</button></div>
         <div id="dpad" hidden>
           <span></span><button data-dx="0" data-dy="-1" title="上へ1px">▲</button><span></span>
           <button data-dx="-1" data-dy="0" title="左へ1px">◀</button><button id="dpadCenter" class="c" title="ドラッグで十字キーを移動"></button><button data-dx="1" data-dy="0" title="右へ1px">▶</button>
@@ -143,7 +150,7 @@
       <span><i style="background:#4dcb7b"></i>選択中の点</span>
       <span><i class="line" style="background:#94a3b8"></i>自動でつないだ辺</span>
     </div>
-    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動</div>
+    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動／「線」ボタンはタップで切替・ドラッグで移動</div>
 
     <div class="status" id="status"></div>
     <div class="actions">
@@ -204,6 +211,7 @@
     layoutMode: $('layoutMode'), boards: $('boards'),
     tol3d: $('tol3d'), count3d: $('count3d'), fov: $('fov'), fovVal: $('fovVal'), offset3d: $('offset3d'), tilt3d: $('tilt3d'), rotate3d: $('rotate3d'),
     soundOn: $('soundOn'), volume: $('volume'), vibrateOn: $('vibrateOn'), vibrateLabel: $('vibrateLabel'), dpadOn: $('dpadOn'),
+    linesUI: $('linesUI'), lineUI: $('lineUI'), btnLines: $('btnLines'),
     lvLabel: $('lvLabel'), lvFill: $('lvFill'), lvProg: $('lvProg'),
     sampleCanvas: $('sampleCanvas'), answerCanvas: $('answerCanvas'),
     sampleInfo: $('sampleInfo'), answerInfo: $('answerInfo'), answerTitle: $('answerTitle'),
@@ -218,7 +226,7 @@
   // ---- 設定 ----
   const defaults = {
     mode: '2d',
-    tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto',
+    tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto', linesUI: false, linesOn: true, linePos: null,
     tol3d: 8, count3d: 1, fov: 50, offset3d: true, tilt3d: false, rotate3d: false,
     zoom: 1, dpadOn: true, dpadPos: null, sound: true, volume: 0.7, vibrate: true,
   };
@@ -247,6 +255,7 @@
     els.vibrateOn.checked = settings.vibrate;
     els.vibrateLabel.style.display = ('vibrate' in navigator) ? '' : 'none';
     els.dpadOn.checked = settings.dpadOn;
+    els.linesUI.checked = settings.linesUI;
     applyMode();
   }
   function applyMode() {
@@ -254,6 +263,7 @@
     document.body.classList.toggle('mode-3d', is3D());
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === settings.mode));
     els.answerTitle.textContent = is3D() ? '立方体の頂点を打つ（1面＝床タイル1枚）' : '回答欄';
+    updateLineUI();
     renderLevel();
   }
 
@@ -549,6 +559,18 @@
       ctx.beginPath(); ctx.arc(p0.x, p0.y, 3, 0, Math.PI * 2); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.5; ctx.stroke();
     }
   }
+  // 2D: 点を重心まわりの角度順に結んで多角形にする（3点=三角形、4点=四角形…）
+  const showLines = () => !is3D() && settings.linesUI && settings.linesOn;
+  function drawPolygon(ctx, pts, color) {
+    if (pts.length < 2) return;
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length, cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    const o = pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+    ctx.beginPath();
+    ctx.moveTo(o[0].x, o[0].y);
+    for (let i = 1; i < o.length; i++) ctx.lineTo(o[i].x, o[i].y);
+    if (o.length >= 3) ctx.closePath();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+  }
   function dot(ctx, p, color, hollow) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2);
@@ -559,6 +581,7 @@
     if (is3D()) return;
     const ctx = setupCanvas(els.sampleCanvas);
     drawBase(ctx);
+    if (showLines()) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.45)');
     state.sample.forEach((p, i) => dot(ctx, p, state.hint.has(i) ? '#2563eb' : '#dc2626'));
   }
   function renderAnswer() {
@@ -574,6 +597,11 @@
         guessVertexOf().forEach((v, i) => { pos[v] = state.user[i]; });
         for (const [a, b] of CUBE_EDGES) if (pos[a] && pos[b]) line(ctx, pos[a], pos[b], '#94a3b8', 1.2);
       }
+    }
+    if (showLines()) {
+      // 配置済みの点＋打った点で多角形。採点後は見本の形も薄く重ねる
+      if (state.scored) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.3)');
+      drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(22,163,74,.5)');
     }
     state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
     if (state.scored && state.result) {
@@ -891,6 +919,41 @@
     });
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stopRepeat);
   });
+  // ---- 線表示の切替ボタン（タップで切替、ドラッグで移動） ----
+  function updateLineUI() {
+    els.lineUI.hidden = is3D() || !settings.linesUI;
+    els.btnLines.textContent = settings.linesOn ? '線 ON' : '線 OFF';
+    els.btnLines.classList.toggle('on', settings.linesOn);
+    const pos = settings.linePos;
+    if (!pos) { els.lineUI.style.left = '16px'; els.lineUI.style.top = '40px'; return; }
+    const board = els.lineUI.parentElement;
+    const maxX = Math.max(0, board.clientWidth - els.lineUI.offsetWidth), maxY = Math.max(0, board.clientHeight - els.lineUI.offsetHeight);
+    els.lineUI.style.left = Math.min(maxX, Math.max(0, pos.x)) + 'px';
+    els.lineUI.style.top = Math.min(maxY, Math.max(0, pos.y)) + 'px';
+  }
+  let lineDrag = null;
+  els.btnLines.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const r = els.lineUI.getBoundingClientRect(), b = els.lineUI.parentElement.getBoundingClientRect();
+    lineDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, bx: b.left, by: b.top, sx: e.clientX, sy: e.clientY, moved: false };
+    try { els.btnLines.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  els.btnLines.addEventListener('pointermove', e => {
+    if (!lineDrag || lineDrag.id !== e.pointerId) return;
+    if (!lineDrag.moved && Math.hypot(e.clientX - lineDrag.sx, e.clientY - lineDrag.sy) < 6) return;
+    lineDrag.moved = true;
+    settings.linePos = { x: e.clientX - lineDrag.dx - lineDrag.bx, y: e.clientY - lineDrag.dy - lineDrag.by };
+    updateLineUI();
+  });
+  const endLineDrag = e => {
+    if (!lineDrag || lineDrag.id !== e.pointerId) return;
+    if (!lineDrag.moved && e.type === 'pointerup') { settings.linesOn = !settings.linesOn; updateLineUI(); render(); }
+    lineDrag = null; saveSettings();
+  };
+  els.btnLines.addEventListener('pointerup', endLineDrag);
+  els.btnLines.addEventListener('pointercancel', endLineDrag);
+  els.linesUI.addEventListener('change', () => { settings.linesUI = els.linesUI.checked; saveSettings(); updateLineUI(); render(); });
+
   // 中央をドラッグで十字キー全体を移動
   let dpadDrag = null;
   els.dpadCenter.addEventListener('pointerdown', e => {
@@ -978,7 +1041,7 @@
     const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);
     els.boards.classList.toggle('col', col);
   }
-  window.addEventListener('resize', () => { applyLayout(); updateDpad(); });
+  window.addEventListener('resize', () => { applyLayout(); updateDpad(); updateLineUI(); });
 
   // ---- タブ／モード ----
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {

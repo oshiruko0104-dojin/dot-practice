@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!--
+  点打ち練習 (Dot Practice)
+  Copyright (c) 2026 oshiruko0104-dojin
+  Licensed under CC BY-NC 4.0 — https://creativecommons.org/licenses/by-nc/4.0/
+  個人利用・改変・再配布は自由（作者名表示）。商用利用（販売・有償配布）は禁止。
+-->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -80,6 +86,8 @@
   #dpad button:active{background:#dbeafe}
   #dpad .c{font-size:11px;color:var(--muted);line-height:1.1;cursor:move;background:rgba(243,244,246,.95)}
   .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  footer{font-size:11px;color:#999;text-align:center;margin:24px 0 8px}
+  footer a{color:inherit}
   /* 線表示の切替オーバーレイ */
   #lineUI{position:absolute;left:16px;top:40px;z-index:1;touch-action:none;user-select:none;-webkit-user-select:none}
   #lineUI[hidden]{display:none}
@@ -233,6 +241,7 @@
     </div>
   </section>
 </main>
+<footer>© 2026 oshiruko0104-dojin ／ <a href="https://creativecommons.org/licenses/by-nc/4.0/deed.ja" target="_blank" rel="noopener">CC BY-NC 4.0</a>（個人利用・改変・再配布は自由、商用利用・販売は禁止）</footer>
 <canvas id="confetti" hidden></canvas>
 <div id="levelToast" hidden></div>
 

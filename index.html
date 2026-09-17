@@ -7,6 +7,7 @@
 <style>
   :root{--bg:#f4f5f7;--card:#fff;--fg:#222;--muted:#666;--accent:#2563eb;--border:#ddd}
   *{box-sizing:border-box}
+  html{overflow-y:scroll}
   body{margin:0;font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--fg)}
   header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2}
   h1{font-size:18px;margin:0}
@@ -131,6 +132,7 @@
       <label>音量 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7"></label>
       <label id="vibrateLabel"><input type="checkbox" id="vibrateOn" checked> バイブ</label>
       <label><input type="checkbox" id="dpadOn" checked> 十字キー</label>
+      <label>点の大きさ <input type="range" id="dotSize" min="2" max="10" step="1" value="5"> <span id="dotSizeVal">5</span></label>
     </div>
 
     <div class="imgbar" data-modes="img">
@@ -173,8 +175,8 @@
     <div class="legend" data-modes="2d">
       <span><i style="background:#dc2626"></i>自分で打つ点</span>
       <span><i style="background:#2563eb"></i>配置済みの点（ヒント）</span>
-      <span><i style="background:#16a34a"></i>打った点</span>
-      <span><i style="background:#4dcb7b"></i>選択中の点（十字キー・矢印キーで動く）</span>
+      <span><i style="background:#dc2626"></i>打った点（見本と同じ赤）</span>
+      <span><i style="background:#ea7f7f"></i>選択中の点（十字キー・矢印キーで動く）</span>
     </div>
     <div class="legend" data-modes="3d">
       <span><i style="background:#2563eb"></i>配置済みの頂点</span>
@@ -232,7 +234,7 @@
   // ---- 定数 ----
   const L = 320;          // キャンバスの論理サイズ(px) 採点はこの座標系で行う
   const MARGIN = 24;      // 点を配置しない外周
-  const DOT_PX = 5;       // 画面上の点の半径(px)。ズームしても大きさは一定
+  const dotPx = () => settings.dotSize;   // 画面上の点の半径(px)。ズームしても大きさは一定
   const MIN_DIST = 28;    // 2D: 見本の点同士の最小距離
   const ZOOM_MIN = 0.25, ZOOM_MAX = 8;
   const SKEY = 'dotPractice.settings.v3';
@@ -240,6 +242,7 @@
   const LKEY = 'dotPractice.levels';
   const MODE_LABEL = { '2d': '2D', '3d': '3D', 'img': '画像' };
   const GREEN = '#16a34a', GREEN_SEL = '#4dcb7b';
+  const RED = '#dc2626', RED_SEL = '#ea7f7f';   // 2D: 打つ点は見本と同じ赤。選択中は同じ色相で淡く
   // 立方体の頂点番号: bit0 = x(+/-), bit1 = y(上/下), bit2 = z(+/-)。1bit だけ違う頂点同士が辺
   const CUBE_EDGES = [];
   for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) { const d = i ^ j; if (d === 1 || d === 2 || d === 4) CUBE_EDGES.push([i, j]); }
@@ -249,7 +252,7 @@
   for (const id of ['tolerance', 'sampleCount', 'answerCount', 'gridOn', 'gridStep', 'zoom', 'zoomVal', 'layoutMode', 'boards',
     'tol3d', 'count3d', 'fov', 'fovVal', 'offset3d', 'tilt3d', 'rotate3d',
     'tolImg', 'imgOpacity', 'imgOpacityVal', 'imgFolder', 'imgFiles', 'btnPrevImg', 'btnNextImg', 'imgName', 'colorPick', 'btnEyedrop', 'palette', 'btnClearPalette',
-    'soundOn', 'volume', 'vibrateOn', 'vibrateLabel', 'dpadOn', 'linesUI', 'lineUI', 'btnLines',
+    'soundOn', 'volume', 'vibrateOn', 'vibrateLabel', 'dpadOn', 'dotSize', 'dotSizeVal', 'linesUI', 'lineUI', 'btnLines',
     'lvLabel', 'lvFill', 'lvProg', 'sampleCanvas', 'answerCanvas', 'sampleTitle', 'sampleInfo', 'answerInfo', 'answerTitle',
     'status', 'result', 'btnScore', 'btnUndo', 'btnClear', 'btnNext', 'dpad', 'dpadCenter',
     'stLevels', 'stProblems', 'stDots', 'stCorrect', 'stRate', 'stTime', 'recFilter', 'recordsBody', 'recordsEmpty', 'btnClearRecords', 'levelToast']) els[id] = $(id);
@@ -260,7 +263,7 @@
     tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto', linesUI: false, linesOn: true, linePos: null,
     tol3d: 8, count3d: 1, fov: 30, offset3d: true, tilt3d: false, rotate3d: false,
     tolImg: 5, imgOpacity: 0, color: GREEN, palette: [],
-    zoom: 1, dpadOn: true, dpadPos: null, sound: true, volume: 0.7, vibrate: true,
+    zoom: 1, dpadOn: true, dpadPos: null, dotSize: 5, sound: true, volume: 0.7, vibrate: true,
   };
   let settings = { ...defaults };
   try { Object.assign(settings, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
@@ -291,6 +294,7 @@
     els.vibrateOn.checked = settings.vibrate;
     els.vibrateLabel.style.display = ('vibrate' in navigator) ? '' : 'none';
     els.dpadOn.checked = settings.dpadOn;
+    els.dotSize.value = settings.dotSize; els.dotSizeVal.textContent = settings.dotSize;
     els.linesUI.checked = settings.linesUI;
     renderPalette();
     applyMode();
@@ -670,7 +674,7 @@
   let syncingScroll = false;
   function syncScroll() {
     syncingScroll = true;
-    const ext = Math.max(S, Math.ceil(L * sc));
+    const ext = settings.zoom > 1 ? Math.max(S, Math.round(L * sc)) : S;   // 等倍以下では余白を作らない（スクロールバーを出さない）
     for (const c of [els.sampleCanvas, els.answerCanvas]) {
       const wrap = c.parentElement.parentElement, spacer = c.parentElement;
       wrap.style.width = wrap.style.height = S + 'px';
@@ -692,7 +696,7 @@
   }
   function setupCanvas(c) {
     const dpr = window.devicePixelRatio || 1;
-    S = frameSize(); sc = scaleOf();
+    sc = scaleOf();
     if (c.width !== Math.round(S * dpr)) { c.width = Math.round(S * dpr); c.height = Math.round(S * dpr); }
     c.style.width = c.style.height = S + 'px';
     const ctx = c.getContext('2d');
@@ -706,6 +710,18 @@
   function toLogical(canvas, clientX, clientY) {
     const r = canvas.getBoundingClientRect();
     return { x: clampL(view.px + (clientX - r.left) / sc), y: clampL(view.py + (clientY - r.top) / sc) };
+  }
+  // 用紙（0..L）の外か
+  function outsidePaper(canvas, clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const x = view.px + (clientX - r.left) / sc, y = view.py + (clientY - r.top) / sc;
+    return x < 0 || y < 0 || x > L || y > L;
+  }
+  // 選択を解除（点を打てない場所をタップしたとき。見本と同じ見た目に戻せる）
+  function deselect() {
+    if (!state.selected) return;
+    state.selected = null;
+    render();
   }
   let renderRaf = null;
   function scheduleRender() { if (!renderRaf) renderRaf = requestAnimationFrame(() => { renderRaf = null; render(); }); }
@@ -845,20 +861,21 @@
   // 選択中の点の色：同じ色相のまま少し淡くする
   function lighten(hex) {
     if (hex === GREEN) return GREEN_SEL;
+    if (hex === RED) return RED_SEL;
     const n = parseInt(hex.slice(1), 16);
     const mix = v => Math.round(v + (255 - v) * 0.4);
     return `rgb(${mix((n >> 16) & 255)},${mix((n >> 8) & 255)},${mix(n & 255)})`;
   }
   function dot(ctx, p, color, hollow) {
     ctx.beginPath();
-    ctx.arc(p.x, p.y, DOT_PX / sc, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, dotPx() / sc, 0, Math.PI * 2);
     if (hollow) { ctx.lineWidth = 1.5 / sc; ctx.strokeStyle = color; ctx.stroke(); }
     else { ctx.fillStyle = color; ctx.fill(); }
   }
   function drawUserPoints(ctx, side) {
     ptsOf(side).forEach((p, i) => {
       const sel = state.selected && state.selected.side === side && state.selected.i === i;
-      const c = isImg() ? p.c : GREEN;
+      const c = isImg() ? p.c : is3D() ? GREEN : RED;
       dot(ctx, p, sel ? lighten(c) : c);
     });
   }
@@ -896,7 +913,7 @@
       } else {
         // 配置済みの点＋打った点で多角形。採点後は見本の形も薄く重ねる
         if (state.scored) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.3)');
-        drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(22,163,74,.5)');
+        drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(220,38,38,.45)');
       }
     }
     state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
@@ -917,7 +934,7 @@
         line(ctx, pr.t, pr.u, col, 1);
         dot(ctx, pr.u, col);
         ctx.fillStyle = col;
-        ctx.fillText(Math.round(pr.d) + 'px', pr.u.x + (DOT_PX + 2) / sc, pr.u.y - 2 / sc);
+        ctx.fillText(Math.round(pr.d) + 'px', pr.u.x + (dotPx() + 2) / sc, pr.u.y - 2 / sc);
       }
     } else {
       drawUserPoints(ctx, 'answer');
@@ -925,6 +942,7 @@
     updateDpad();
   }
   function render() {
+    S = frameSize(); sc = scaleOf();
     renderSample();
     renderAnswer();
     syncScroll();
@@ -1136,7 +1154,7 @@
   // タッチは「指を離した時に打つ」ことでスクロールと区別する（スクロールが始まると pointercancel が来る）
   let dragging = null, pendingTap = null, dragFrom = null, panDrag = null, spaceHeld = false, pinch = null;
   const activePointers = new Set();
-  const hitRadius = e => (e.pointerType === 'touch' ? 22 : 10) / sc;
+  const hitRadius = e => Math.max(e.pointerType === 'touch' ? 22 : 10, dotPx() * 2) / sc;
   function bindCanvas(canvas, side) {
     canvas.addEventListener('pointerdown', e => {
       // スペース＋ドラッグ／ホイールボタンドラッグでスクロール
@@ -1149,7 +1167,8 @@
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       activePointers.add(e.pointerId);
       if (activePointers.size >= 2) { pendingTap = null; dragging = null; return; } // 2本指はズーム／スクロール用
-      if (!canPlace(side) || state.scored) return;
+      if (state.scored) return;
+      if (!canPlace(side) || outsidePaper(canvas, e.clientX, e.clientY)) { deselect(); return; }
       const p = toLogical(canvas, e.clientX, e.clientY);
       const i = hitIndex(side, p, hitRadius(e));
       if (eyedrop) {
@@ -1173,7 +1192,7 @@
       if (placeAt(side, p)) {
         dragging = { side, i: ptsOf(side).length - 1, canvas };
         try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-      }
+      } else state.selected = null;   // 打てなかった（上限）→ 選択解除
       render();
     });
     canvas.addEventListener('pointermove', e => {
@@ -1202,7 +1221,7 @@
       }
       if (pendingTap && pendingTap.id === e.pointerId) {
         const t = pendingTap; pendingTap = null;
-        if (e.type === 'pointerup' && !state.scored) { placeAt(t.side, t.p); render(); }
+        if (e.type === 'pointerup' && !state.scored) { if (!placeAt(t.side, t.p)) state.selected = null; render(); }
       }
     };
     canvas.addEventListener('pointerup', up);
@@ -1410,6 +1429,8 @@
   els.volume.addEventListener('change', () => { settings.volume = +els.volume.value; saveSettings(); playSound('place'); });
   els.vibrateOn.addEventListener('change', () => { settings.vibrate = els.vibrateOn.checked; saveSettings(); vibrate('place'); });
   els.dpadOn.addEventListener('change', () => { settings.dpadOn = els.dpadOn.checked; if (settings.dpadOn) settings.dpadPos = null; saveSettings(); updateDpad(); });
+  els.dotSize.addEventListener('input', () => { settings.dotSize = +els.dotSize.value; els.dotSizeVal.textContent = settings.dotSize; render(); });
+  els.dotSize.addEventListener('change', saveSettings);
   function applyLayout() {
     const m = settings.layoutMode;
     const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);

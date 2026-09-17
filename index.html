@@ -19,8 +19,20 @@
   .settings input[type=number]{width:64px;font-size:16px;padding:4px}
   .settings select{font-size:15px;padding:4px}
   .settings .sep{flex-basis:100%;height:0;margin:-4px 0}
-  /* モードで表示を切り替える要素 */
-  body.mode-3d .only2d,body.mode-2d .only3d,body.mode-3d .board.sample{display:none!important}
+  /* data-modes に含まれないモードでは非表示 */
+  body.mode-2d [data-modes]:not([data-modes~="2d"]),body.mode-3d [data-modes]:not([data-modes~="3d"]),body.mode-img [data-modes]:not([data-modes~="img"]){display:none!important}
+  .imgbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;background:var(--card);padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin-top:8px}
+  .imgbar .muted{color:var(--muted);font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filebtn{display:inline-block;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:15px}
+  .filebtn input{display:none}
+  .imgbar input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer}
+  .palette{display:flex;flex-wrap:wrap;gap:4px;max-width:100%}
+  .palette button{width:26px;height:26px;padding:0;border-radius:6px;border:1px solid rgba(0,0,0,.25)}
+  .palette button.cur{outline:2px solid var(--accent);outline-offset:1px}
+  button.small{font-size:12px;padding:4px 8px}
+  button.eyedrop.on{background:#dbeafe;border-color:var(--accent)}
+  body.eyedrop canvas.board-canvas{cursor:crosshair}
+  body.panning canvas.board-canvas{cursor:grab}
   .levelbar{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px}
   .levelbar b{font-size:16px}
   .levelbar .bar{flex:1;max-width:260px;height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden}
@@ -29,9 +41,10 @@
   .boards.col{flex-direction:column}
   .board{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;position:relative}
   .board h2{font-size:14px;margin:0 0 6px;color:var(--muted);display:flex;justify-content:space-between}
-  .canvasWrap{overflow:auto;max-width:100%;max-height:70vh;background:#eaeaea;border-radius:4px}
-  /* 指1本のスクロールはブラウザに任せ、ピンチは自前で処理する */
-  canvas.board-canvas{display:block;margin:0 auto;touch-action:pan-x pan-y;background:#fff;box-shadow:0 0 0 1px #ccc;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  .canvasWrap{overflow:auto;max-width:100%;background:#eaeaea;border-radius:4px;margin:0 auto;position:relative}
+  .spacer{position:relative}
+  /* 指1本のスクロールはブラウザに任せ、ピンチ／2本指スクロールは自前で処理する */
+  canvas.board-canvas{display:block;position:sticky;top:0;left:0;touch-action:pan-x pan-y;background:#eaeaea;box-shadow:0 0 0 1px #ccc;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
   .legend{display:flex;margin-top:8px;font-size:12px;color:var(--muted);flex-wrap:wrap;gap:12px}
   .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle}
   .legend i.line{width:14px;height:3px;border-radius:2px}
@@ -81,6 +94,7 @@
   <nav>
     <button data-tab="2d" class="active">2D</button>
     <button data-tab="3d">3D</button>
+    <button data-tab="img">画像</button>
     <button data-tab="records">記録</button>
   </nav>
 </header>
@@ -88,31 +102,50 @@
   <section id="tab-practice">
     <div class="settings">
       <!-- 2D -->
-      <label class="only2d">許容誤差 <input type="number" id="tolerance" min="0" max="200" value="5"> px</label>
-      <label class="only2d">見本の点数 <input type="number" id="sampleCount" min="1" max="30" value="3"></label>
-      <label class="only2d">回答の点数 <input type="number" id="answerCount" min="1" max="30" value="1"></label>
-      <label class="only2d"><input type="checkbox" id="gridOn"> グリッド</label>
-      <label class="only2d">間隔 <select id="gridStep">
+      <label data-modes="2d">許容誤差 <input type="number" id="tolerance" min="0" max="200" value="5"> px</label>
+      <label data-modes="2d">見本の点数 <input type="number" id="sampleCount" min="1" max="30" value="3"></label>
+      <label data-modes="2d">回答の点数 <input type="number" id="answerCount" min="1" max="30" value="1"></label>
+      <!-- 3D -->
+      <label data-modes="3d">許容誤差 <input type="number" id="tol3d" min="0" max="200" value="8"> px</label>
+      <label data-modes="3d">配置する点の数 <input type="number" id="count3d" min="1" max="8" value="1"></label>
+      <label data-modes="3d">パース <input type="range" id="fov" min="20" max="100" step="5" value="50"> <span id="fovVal">50°</span></label>
+      <label data-modes="3d"><input type="checkbox" id="offset3d"> ずらす</label>
+      <label data-modes="3d"><input type="checkbox" id="tilt3d"> 浮かせる（傾ける）</label>
+      <label data-modes="3d"><input type="checkbox" id="rotate3d"> 回転</label>
+      <!-- 画像 -->
+      <label data-modes="img">許容誤差 <input type="number" id="tolImg" min="0" max="200" value="5"> px</label>
+      <label data-modes="img">画像の透過率 <input type="range" id="imgOpacity" min="0" max="100" step="5" value="0"> <span id="imgOpacityVal">0%</span></label>
+      <!-- 2D / 画像 共通 -->
+      <label data-modes="2d img"><input type="checkbox" id="gridOn"> グリッド</label>
+      <label data-modes="2d img">間隔 <select id="gridStep">
         <option value="10">10px</option><option value="20" selected>20px</option><option value="40">40px</option><option value="80">80px</option>
       </select></label>
-      <label class="only2d"><input type="checkbox" id="linesUI"> 線表示UI</label>
-      <label class="only2d">配置 <select id="layoutMode">
+      <label data-modes="2d img"><input type="checkbox" id="linesUI"> 線表示UI</label>
+      <label data-modes="2d img">配置 <select id="layoutMode">
         <option value="auto">自動</option><option value="row">左右</option><option value="col">上下</option>
       </select></label>
-      <!-- 3D -->
-      <label class="only3d">許容誤差 <input type="number" id="tol3d" min="0" max="200" value="8"> px</label>
-      <label class="only3d">配置する点の数 <input type="number" id="count3d" min="1" max="8" value="1"></label>
-      <label class="only3d">パース <input type="range" id="fov" min="20" max="100" step="5" value="50"> <span id="fovVal">50°</span></label>
-      <label class="only3d"><input type="checkbox" id="offset3d"> ずらす</label>
-      <label class="only3d"><input type="checkbox" id="tilt3d"> 浮かせる（傾ける）</label>
-      <label class="only3d"><input type="checkbox" id="rotate3d"> 回転</label>
       <span class="sep"></span>
       <!-- 共通 -->
-      <label>ズーム <input type="range" id="zoom" min="0.25" max="4" step="0.05" value="1"> <span id="zoomVal">100%</span></label>
+      <label>ズーム <input type="range" id="zoom" min="0.25" max="8" step="0.05" value="1"> <span id="zoomVal">100%</span></label>
       <label><input type="checkbox" id="soundOn" checked> サウンド</label>
       <label>音量 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.7"></label>
       <label id="vibrateLabel"><input type="checkbox" id="vibrateOn" checked> バイブ</label>
       <label><input type="checkbox" id="dpadOn" checked> 十字キー</label>
+    </div>
+
+    <div class="imgbar" data-modes="img">
+      <label class="filebtn">フォルダを選ぶ <input type="file" id="imgFolder" webkitdirectory multiple></label>
+      <label class="filebtn">画像を選ぶ <input type="file" id="imgFiles" accept="image/*" multiple></label>
+      <button id="btnPrevImg">前の画像</button>
+      <button id="btnNextImg">次の画像</button>
+      <span class="muted" id="imgName">画像が選ばれていません</span>
+      <span class="sep" style="flex-basis:100%;height:0"></span>
+      <span class="muted" style="white-space:normal">🔒 選んだ画像はこの端末のブラウザ内だけで表示されます。サーバーへの送信・保存は一切行いません（ページを再読み込みすると消えるので、再度選び直してください）。</span>
+      <span class="sep" style="flex-basis:100%;height:0"></span>
+      <label>色 <input type="color" id="colorPick" value="#16a34a"></label>
+      <button id="btnEyedrop" class="eyedrop" title="スポイト（右クリック／長押しでも取れます）">💧 スポイト</button>
+      <div class="palette" id="palette"></div>
+      <button id="btnClearPalette" class="small">パレットを消す</button>
     </div>
 
     <div class="levelbar">
@@ -122,13 +155,13 @@
     </div>
 
     <div class="boards" id="boards">
-      <div class="board sample">
-        <h2><span>見本</span><span id="sampleInfo"></span></h2>
-        <div class="canvasWrap"><canvas id="sampleCanvas" class="board-canvas"></canvas></div>
+      <div class="board sample" data-modes="2d img">
+        <h2><span id="sampleTitle">見本</span><span id="sampleInfo"></span></h2>
+        <div class="canvasWrap"><div class="spacer"><canvas id="sampleCanvas" class="board-canvas"></canvas></div></div>
       </div>
       <div class="board">
         <h2><span id="answerTitle">回答欄</span><span id="answerInfo"></span></h2>
-        <div class="canvasWrap"><canvas id="answerCanvas" class="board-canvas"></canvas></div>
+        <div class="canvasWrap"><div class="spacer"><canvas id="answerCanvas" class="board-canvas"></canvas></div></div>
         <div id="lineUI" hidden><button id="btnLines">線 ON</button></div>
         <div id="dpad" hidden>
           <span></span><button data-dx="0" data-dy="-1" title="上へ1px">▲</button><span></span>
@@ -137,20 +170,25 @@
         </div>
       </div>
     </div>
-    <div class="legend only2d">
+    <div class="legend" data-modes="2d">
       <span><i style="background:#dc2626"></i>自分で打つ点</span>
       <span><i style="background:#2563eb"></i>配置済みの点（ヒント）</span>
       <span><i style="background:#16a34a"></i>打った点</span>
       <span><i style="background:#4dcb7b"></i>選択中の点（十字キー・矢印キーで動く）</span>
     </div>
-    <div class="legend only3d">
+    <div class="legend" data-modes="3d">
       <span><i style="background:#2563eb"></i>配置済みの頂点</span>
       <span><i class="line" style="background:#7c3aed"></i>正面方向（立方体の中心から1タイル分・傾きも反映）</span>
       <span><i style="background:#16a34a"></i>打った点</span>
       <span><i style="background:#4dcb7b"></i>選択中の点</span>
       <span><i class="line" style="background:#94a3b8"></i>自動でつないだ辺（奥の辺は破線）</span>
     </div>
-    <div class="hint">タップで点を打つ／点をなぞって移動／2本指でズーム／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）／十字キーは中央をドラッグして移動／「線」ボタンはタップで切替・ドラッグで移動（枠の外にも置ける。設定でOFF→ONにすると位置が初期化）</div>
+    <div class="legend" data-modes="img">
+      <span>見本欄・回答欄の両方に同じ数の点を打つ／選んだ色で点が打たれる／同じ色の点同士が線で結ばれる／右クリック（長押し）で画像や点から色を取れる</span>
+    </div>
+    <div class="hint">タップで点を打つ／点をなぞって移動／十字キー・矢印キーで選択中の点を1pxずつ微調整（Shiftで5px）<br>
+      ズーム：マウスホイール（PC）・2本指ピンチ（スマホ）／スクロール：スペース＋ドラッグまたはホイールボタンドラッグ（PC）・2本指ドラッグ（スマホ）<br>
+      十字キーは中央をドラッグして移動／「線」ボタンはタップで切替・ドラッグで移動（枠の外にも置ける。設定でOFF→ONにすると位置が初期化）</div>
 
     <div class="status" id="status"></div>
     <div class="actions">
@@ -172,7 +210,7 @@
       <div class="card"><div class="v" id="stTime">0秒</div><div class="k">合計時間</div></div>
     </div>
     <div class="actions">
-      <label>表示 <select id="recFilter"><option value="all">すべて</option><option value="2d">2Dのみ</option><option value="3d">3Dのみ</option></select></label>
+      <label>表示 <select id="recFilter"><option value="all">すべて</option><option value="2d">2Dのみ</option><option value="3d">3Dのみ</option><option value="img">画像のみ</option></select></label>
     </div>
     <div class="tableWrap">
       <table>
@@ -194,47 +232,42 @@
   // ---- 定数 ----
   const L = 320;          // キャンバスの論理サイズ(px) 採点はこの座標系で行う
   const MARGIN = 24;      // 点を配置しない外周
-  const DOT_R = 5;
+  const DOT_PX = 5;       // 画面上の点の半径(px)。ズームしても大きさは一定
   const MIN_DIST = 28;    // 2D: 見本の点同士の最小距離
-  const ZOOM_MIN = 0.25, ZOOM_MAX = 4;
-  const SKEY = 'dotPractice.settings.v2';
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 8;
+  const SKEY = 'dotPractice.settings.v3';
   const RKEY = 'dotPractice.records';
   const LKEY = 'dotPractice.levels';
+  const MODE_LABEL = { '2d': '2D', '3d': '3D', 'img': '画像' };
+  const GREEN = '#16a34a', GREEN_SEL = '#4dcb7b';
   // 立方体の頂点番号: bit0 = x(+/-), bit1 = y(上/下), bit2 = z(+/-)。1bit だけ違う頂点同士が辺
   const CUBE_EDGES = [];
   for (let i = 0; i < 8; i++) for (let j = i + 1; j < 8; j++) { const d = i ^ j; if (d === 1 || d === 2 || d === 4) CUBE_EDGES.push([i, j]); }
 
   const $ = id => document.getElementById(id);
-  const els = {
-    tolerance: $('tolerance'), sampleCount: $('sampleCount'), answerCount: $('answerCount'),
-    gridOn: $('gridOn'), gridStep: $('gridStep'), zoom: $('zoom'), zoomVal: $('zoomVal'),
-    layoutMode: $('layoutMode'), boards: $('boards'),
-    tol3d: $('tol3d'), count3d: $('count3d'), fov: $('fov'), fovVal: $('fovVal'), offset3d: $('offset3d'), tilt3d: $('tilt3d'), rotate3d: $('rotate3d'),
-    soundOn: $('soundOn'), volume: $('volume'), vibrateOn: $('vibrateOn'), vibrateLabel: $('vibrateLabel'), dpadOn: $('dpadOn'),
-    linesUI: $('linesUI'), lineUI: $('lineUI'), btnLines: $('btnLines'),
-    lvLabel: $('lvLabel'), lvFill: $('lvFill'), lvProg: $('lvProg'),
-    sampleCanvas: $('sampleCanvas'), answerCanvas: $('answerCanvas'),
-    sampleInfo: $('sampleInfo'), answerInfo: $('answerInfo'), answerTitle: $('answerTitle'),
-    status: $('status'), result: $('result'),
-    btnScore: $('btnScore'), btnUndo: $('btnUndo'), btnClear: $('btnClear'), btnNext: $('btnNext'),
-    dpad: $('dpad'), dpadCenter: $('dpadCenter'),
-    stLevels: $('stLevels'), stProblems: $('stProblems'), stDots: $('stDots'), stCorrect: $('stCorrect'), stRate: $('stRate'), stTime: $('stTime'),
-    recFilter: $('recFilter'), recordsBody: $('recordsBody'), recordsEmpty: $('recordsEmpty'), btnClearRecords: $('btnClearRecords'),
-    levelToast: $('levelToast'),
-  };
+  const els = {};
+  for (const id of ['tolerance', 'sampleCount', 'answerCount', 'gridOn', 'gridStep', 'zoom', 'zoomVal', 'layoutMode', 'boards',
+    'tol3d', 'count3d', 'fov', 'fovVal', 'offset3d', 'tilt3d', 'rotate3d',
+    'tolImg', 'imgOpacity', 'imgOpacityVal', 'imgFolder', 'imgFiles', 'btnPrevImg', 'btnNextImg', 'imgName', 'colorPick', 'btnEyedrop', 'palette', 'btnClearPalette',
+    'soundOn', 'volume', 'vibrateOn', 'vibrateLabel', 'dpadOn', 'linesUI', 'lineUI', 'btnLines',
+    'lvLabel', 'lvFill', 'lvProg', 'sampleCanvas', 'answerCanvas', 'sampleTitle', 'sampleInfo', 'answerInfo', 'answerTitle',
+    'status', 'result', 'btnScore', 'btnUndo', 'btnClear', 'btnNext', 'dpad', 'dpadCenter',
+    'stLevels', 'stProblems', 'stDots', 'stCorrect', 'stRate', 'stTime', 'recFilter', 'recordsBody', 'recordsEmpty', 'btnClearRecords', 'levelToast']) els[id] = $(id);
 
   // ---- 設定 ----
   const defaults = {
     mode: '2d',
     tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto', linesUI: false, linesOn: true, linePos: null,
     tol3d: 8, count3d: 1, fov: 50, offset3d: true, tilt3d: false, rotate3d: false,
+    tolImg: 5, imgOpacity: 0, color: GREEN, palette: [],
     zoom: 1, dpadOn: true, dpadPos: null, sound: true, volume: 0.7, vibrate: true,
   };
   let settings = { ...defaults };
   try { Object.assign(settings, JSON.parse(localStorage.getItem(SKEY) || '{}')); } catch (e) {}
   function saveSettings() { try { localStorage.setItem(SKEY, JSON.stringify(settings)); } catch (e) {} }
   const is3D = () => settings.mode === '3d';
-  const tol = () => is3D() ? settings.tol3d : settings.tolerance;
+  const isImg = () => settings.mode === 'img';
+  const tol = () => is3D() ? settings.tol3d : isImg() ? settings.tolImg : settings.tolerance;
   function applySettingsToUI() {
     els.tolerance.value = settings.tolerance;
     els.sampleCount.value = settings.sampleCount;
@@ -248,6 +281,9 @@
     els.offset3d.checked = settings.offset3d;
     els.tilt3d.checked = settings.tilt3d;
     els.rotate3d.checked = settings.rotate3d;
+    els.tolImg.value = settings.tolImg;
+    els.imgOpacity.value = settings.imgOpacity; els.imgOpacityVal.textContent = settings.imgOpacity + '%';
+    els.colorPick.value = settings.color;
     els.zoom.value = settings.zoom;
     els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
     els.soundOn.checked = settings.sound;
@@ -256,13 +292,14 @@
     els.vibrateLabel.style.display = ('vibrate' in navigator) ? '' : 'none';
     els.dpadOn.checked = settings.dpadOn;
     els.linesUI.checked = settings.linesUI;
+    renderPalette();
     applyMode();
   }
   function applyMode() {
-    document.body.classList.toggle('mode-2d', !is3D());
-    document.body.classList.toggle('mode-3d', is3D());
+    for (const m of ['2d', '3d', 'img']) document.body.classList.toggle('mode-' + m, settings.mode === m);
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === settings.mode));
     els.answerTitle.textContent = is3D() ? '立方体の頂点を打つ（1面＝床タイル1枚）' : '回答欄';
+    els.sampleTitle.textContent = isImg() ? '見本（画像）' : '見本';
     updateLineUI();
     renderLevel();
   }
@@ -293,9 +330,9 @@
   }
   const feedback = k => { playSound(k); vibrate(k); };
 
-  // ---- レベル（2D/3D 別） ----
-  let levels = { '2d': { level: 1, progress: 0 }, '3d': { level: 1, progress: 0 } };
-  try { const l = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (l && l['2d'] && l['3d']) levels = l; } catch (e) {}
+  // ---- レベル（モード別） ----
+  let levels = { '2d': { level: 1, progress: 0 }, '3d': { level: 1, progress: 0 }, 'img': { level: 1, progress: 0 } };
+  try { const l = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (l && l['2d'] && l['3d']) levels = { ...levels, ...l }; } catch (e) {}
   const needFor = lv => 10 + lv;   // 次のレベルまでに必要な正解点数
   function saveLevels() { try { localStorage.setItem(LKEY, JSON.stringify(levels)); } catch (e) {} }
   function addProgress(mode, correct) {
@@ -308,13 +345,13 @@
   }
   function renderLevel() {
     const s = levels[settings.mode], need = needFor(s.level);
-    els.lvLabel.textContent = `${settings.mode.toUpperCase()} Lv.${s.level}`;
+    els.lvLabel.textContent = `${MODE_LABEL[settings.mode]} Lv.${s.level}`;
     els.lvFill.style.width = Math.min(100, s.progress / need * 100) + '%';
     els.lvProg.textContent = `次のレベルまで ${s.progress} / ${need}`;
   }
   let toastTimer = null;
   function showLevelUp(level) {
-    els.levelToast.innerHTML = `LEVEL UP!<br>${settings.mode.toUpperCase()} Lv.${level}<small>次のレベルまで ${needFor(level)} 点</small>`;
+    els.levelToast.innerHTML = `LEVEL UP!<br>${MODE_LABEL[settings.mode]} Lv.${level}<small>次のレベルまで ${needFor(level)} 点</small>`;
     els.levelToast.hidden = true;
     void els.levelToast.offsetWidth; // アニメーションをやり直す
     els.levelToast.hidden = false;
@@ -323,6 +360,7 @@
   }
 
   // ---- 紙吹雪 ----
+  const rand = (a, b) => a + Math.random() * (b - a);
   const confetti = (() => {
     const c = $('confetti'), ctx = c.getContext('2d');
     let parts = [], raf = null;
@@ -354,17 +392,22 @@
 
   // ---- 状態 ----
   const state = {
-    sample: [],        // 目標の点 [{x,y}]（3D では立方体8頂点の投影位置）
+    sample: [],        // 目標の点 [{x,y}]（2D: 見本の点 / 3D: 立方体8頂点の投影位置）
     hint: new Set(),   // 最初から配置される点のインデックス
-    user: [],          // ユーザーが打った点
-    selected: null,    // 最後に打った／動かした点のインデックス（十字キーの対象）
+    user: [],          // 回答欄に打った点 [{x,y,c,o}]（c=色, o=打った順）
+    spts: [],          // 画像モード: 見本欄に打った点
+    selected: null,    // 選択中の点 {side:'sample'|'answer', i}（十字キーの対象）
     scene: null,       // 3D の描画用データ
     scored: false,
     result: null,
+    order: 0,
     // タイマー
     startAt: 0, accum: 0, running: false,
   };
-  let dragging = null;
+  const ptsOf = side => side === 'sample' ? state.spts : state.user;
+  const selPoint = () => state.selected ? ptsOf(state.selected.side)[state.selected.i] : null;
+  // そのキャンバスに点を打てるか（2D/3D は回答欄のみ、画像モードは両方）
+  const canPlace = side => side === 'answer' || isImg();
 
   // ---- タイマー（タブが非表示の間は止める） ----
   function timerStart() { state.accum = 0; state.startAt = performance.now(); state.running = true; }
@@ -378,16 +421,21 @@
   setInterval(() => { if (state.running) updateStatus(); }, 500);
 
   // ---- 問題生成 ----
-  const rand = (a, b) => a + Math.random() * (b - a);
   function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
-  function newProblem() {
-    if (is3D()) newProblem3D(); else newProblem2D();
+  function resetAnswer() {
     state.user = [];
+    state.spts = [];
     state.selected = null;
     state.scored = false;
     state.result = null;
     dragging = null;
     timerStart();
+  }
+  function newProblem() {
+    if (is3D()) newProblem3D();
+    else if (isImg()) { state.sample = []; state.hint = new Set(); state.scene = null; }
+    else newProblem2D();
+    resetAnswer();
     render();
   }
   function newProblem2D() {
@@ -404,7 +452,92 @@
     // ヒント（配置済み）にする点をランダムに n-a 個選ぶ
     state.hint = new Set(shuffle(pts.map((_, i) => i)).slice(0, n - a));
   }
-  const targetCount = () => state.sample.length - state.hint.size;
+  // 打つべき点の数（画像モードは見本欄に打った数）
+  const targetCount = () => isImg() ? state.spts.length : state.sample.length - state.hint.size;
+
+  // ---- 画像モード：画像の読み込み ----
+  const images = { files: [], index: -1, img: null, url: null, fit: null, pick: document.createElement('canvas') };
+  images.pick.width = images.pick.height = L * 2;   // スポイト用（論理座標の2倍で保持）
+  function setImageFiles(list) {
+    const files = Array.from(list).filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(f.name));
+    files.sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+    if (!files.length) { els.status.textContent = '画像ファイル（png/jpg等）が見つかりませんでした。'; return; }
+    images.files = files;
+    loadImage(0);
+  }
+  function loadImage(i) {
+    if (!images.files.length) return;
+    images.index = (i + images.files.length) % images.files.length;
+    const f = images.files[images.index];
+    if (images.url) URL.revokeObjectURL(images.url);
+    images.url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      images.img = img;
+      // L×L の中に収まるように配置（アスペクト比維持・中央）
+      const s = Math.min(L / img.naturalWidth, L / img.naturalHeight);
+      const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
+      images.fit = { dx: (L - dw) / 2, dy: (L - dh) / 2, dw, dh };
+      const pc = images.pick.getContext('2d');
+      pc.clearRect(0, 0, L * 2, L * 2);
+      pc.drawImage(img, images.fit.dx * 2, images.fit.dy * 2, dw * 2, dh * 2);
+      els.imgName.textContent = `${images.index + 1} / ${images.files.length}：${f.name}`;
+      if (isImg()) newProblem();
+    };
+    img.onerror = () => { els.status.textContent = `画像を読み込めませんでした: ${f.name}`; };
+    img.src = images.url;
+  }
+  // 画像の色を取る。透明なら null
+  function pickImageColor(p) {
+    if (!images.img) return null;
+    const d = images.pick.getContext('2d').getImageData(Math.min(L * 2 - 1, p.x * 2), Math.min(L * 2 - 1, p.y * 2), 1, 1).data;
+    if (d[3] < 10) return null;
+    return '#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  els.imgFolder.addEventListener('change', () => setImageFiles(els.imgFolder.files));
+  els.imgFiles.addEventListener('change', () => setImageFiles(els.imgFiles.files));
+  els.btnPrevImg.addEventListener('click', () => loadImage(images.index - 1));
+  els.btnNextImg.addEventListener('click', () => loadImage(images.index + 1));
+
+  // ---- 画像モード：色・パレット・スポイト ----
+  let eyedrop = false;
+  function setColor(c, addToPalette) {
+    settings.color = c;
+    els.colorPick.value = c;
+    if (addToPalette) {
+      settings.palette = [c, ...settings.palette.filter(x => x !== c)].slice(0, 24);
+    }
+    saveSettings();
+    renderPalette();
+  }
+  function renderPalette() {
+    els.palette.innerHTML = '';
+    for (const c of settings.palette) {
+      const b = document.createElement('button');
+      b.style.background = c; b.title = c;
+      b.classList.toggle('cur', c === settings.color);
+      b.addEventListener('click', () => setColor(c, true));
+      els.palette.appendChild(b);
+    }
+  }
+  els.colorPick.addEventListener('input', () => setColor(els.colorPick.value, false));
+  els.colorPick.addEventListener('change', () => setColor(els.colorPick.value, true));
+  els.btnClearPalette.addEventListener('click', () => { settings.palette = []; saveSettings(); renderPalette(); });
+  function setEyedrop(on) {
+    eyedrop = on;
+    els.btnEyedrop.classList.toggle('on', on);
+    document.body.classList.toggle('eyedrop', on);
+    if (on) els.status.textContent = 'スポイト：色を取りたい場所（画像や点）をタップしてください。';
+    else updateStatus();
+  }
+  els.btnEyedrop.addEventListener('click', () => setEyedrop(!eyedrop));
+  // 位置 p（side 側）から色を取る：点があればその色、見本欄なら画像の色
+  function sampleColorAt(side, p, hitR) {
+    const i = hitIndex(side, p, hitR);
+    if (i >= 0) return ptsOf(side)[i].c;
+    if (side === 'sample') return pickImageColor(p);
+    return null;
+  }
 
   // ---- 3D ----
   const v3 = {
@@ -514,94 +647,180 @@
     return best.map(j => slots[j]);
   }
 
-  // ---- 描画 ----
+  // ---- 表示（枠サイズ・ズーム・スクロール位置） ----
+  // 枠のサイズは固定で、その中身をズーム／スクロールする。見本と回答欄は同じ倍率・同じ位置
+  const view = { px: 0, py: 0 };   // 枠の左上に表示される論理座標
+  let S = L, sc = 1;               // 枠サイズ(px) と 論理px→画面px の倍率（render 時に更新）
+  // 枠サイズ：ボードの幅いっぱい（最大600px）
+  function frameSize() {
+    const w = els.answerCanvas.closest('.board').clientWidth - 16 || L;
+    return Math.max(160, Math.min(600, Math.floor(w)));
+  }
+  function scaleOf() { return S / L * settings.zoom; }
+  function clampView() {
+    // 枠に見える論理サイズ（スクロールバーの分だけ狭くなる）
+    const wrap = els.answerCanvas.parentElement.parentElement;
+    const vis = (wrap.clientWidth || S) / sc;
+    // 拡大時は用紙の中を、縮小時は用紙が枠からはみ出さない範囲を動ける
+    const lo = Math.min(0, L - vis), hi = Math.max(0, L - vis);
+    view.px = Math.min(hi, Math.max(lo, view.px));
+    view.py = Math.min(hi, Math.max(lo, view.py));
+  }
+  // スクロールバー：拡大時は枠の中の余白（spacer）を用紙の大きさにしてブラウザのスクロールに任せる
+  let syncingScroll = false;
+  function syncScroll() {
+    syncingScroll = true;
+    const ext = Math.max(S, Math.ceil(L * sc));
+    for (const c of [els.sampleCanvas, els.answerCanvas]) {
+      const wrap = c.parentElement.parentElement, spacer = c.parentElement;
+      wrap.style.width = wrap.style.height = S + 'px';
+      spacer.style.width = spacer.style.height = ext + 'px';
+      const sx = Math.max(0, view.px) * sc, sy = Math.max(0, view.py) * sc;
+      if (Math.abs(wrap.scrollLeft - sx) > 0.5) wrap.scrollLeft = sx;
+      if (Math.abs(wrap.scrollTop - sy) > 0.5) wrap.scrollTop = sy;
+    }
+    syncingScroll = false;
+  }
+  for (const c of [els.sampleCanvas, els.answerCanvas]) {
+    c.parentElement.parentElement.addEventListener('scroll', e => {
+      if (syncingScroll || settings.zoom <= 1) return;
+      view.px = e.currentTarget.scrollLeft / sc;
+      view.py = e.currentTarget.scrollTop / sc;
+      clampView();
+      scheduleRender();
+    });
+  }
   function setupCanvas(c) {
     const dpr = window.devicePixelRatio || 1;
-    const z = settings.zoom;
-    c.width = Math.round(L * z * dpr);
-    c.height = Math.round(L * z * dpr);
-    c.style.width = (L * z) + 'px';
-    c.style.height = (L * z) + 'px';
+    S = frameSize(); sc = scaleOf();
+    if (c.width !== Math.round(S * dpr)) { c.width = Math.round(S * dpr); c.height = Math.round(S * dpr); }
+    c.style.width = c.style.height = S + 'px';
     const ctx = c.getContext('2d');
-    ctx.setTransform(z * dpr, 0, 0, z * dpr, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.setTransform(sc * dpr, 0, 0, sc * dpr, -view.px * sc * dpr, -view.py * sc * dpr);
     return ctx;
   }
+  // 画面座標 → 論理座標（整数）
+  const clampL = v => Math.round(Math.min(L, Math.max(0, v)));
+  function toLogical(canvas, clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return { x: clampL(view.px + (clientX - r.left) / sc), y: clampL(view.py + (clientY - r.top) / sc) };
+  }
+  let renderRaf = null;
+  function scheduleRender() { if (!renderRaf) renderRaf = requestAnimationFrame(() => { renderRaf = null; render(); }); }
+  // ズーム変更。anchor（canvas, cx, cy）を渡すとその画面位置の下にある点を固定する
+  function setZoom(z, anchor) {
+    z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+    if (z === settings.zoom) return;
+    if (anchor) {
+      const r = anchor.canvas.getBoundingClientRect();
+      const ox = anchor.cx - r.left, oy = anchor.cy - r.top;
+      const lx = view.px + ox / sc, ly = view.py + oy / sc;
+      const sc1 = S / L * z;
+      view.px = lx - ox / sc1; view.py = ly - oy / sc1;
+    } else {
+      const c = view.px + L / settings.zoom / 2, d = view.py + L / settings.zoom / 2;
+      view.px = c - L / z / 2; view.py = d - L / z / 2;
+    }
+    settings.zoom = z;
+    sc = S / L * z;
+    clampView();
+    els.zoom.value = z;
+    els.zoomVal.textContent = Math.round(z * 100) + '%';
+    scheduleRender();
+    saveSettings();
+  }
+
+  // ---- 描画 ----
   function drawBase(ctx) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, L, L);
     if (settings.gridOn) {
       const s = settings.gridStep;
-      ctx.lineWidth = 1 / settings.zoom;
+      ctx.lineWidth = 1 / sc;
       for (let v = 0; v <= L; v += s) {
         const major = (v % (s * 4)) === 0;
         ctx.strokeStyle = major ? '#c8c8c8' : '#e6e6e6';
-        ctx.beginPath(); ctx.moveTo(v + 0.5, 0); ctx.lineTo(v + 0.5, L); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, v + 0.5); ctx.lineTo(L, v + 0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, L); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, v); ctx.lineTo(L, v); ctx.stroke();
       }
     }
   }
   function line(ctx, a, b, color, width) {
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = width / sc; ctx.stroke();
   }
   // 3D: 面がカメラ側を向いているか
-  function faceVisible(sc, f) { return v3.dot(f.normal, v3.sub(sc.camPos, f.center)) > 0; }
+  function faceVisible(s3, f) { return v3.dot(f.normal, v3.sub(s3.camPos, f.center)) > 0; }
   // 3D: 辺が手前（見えている面に属する）か。奥の辺は破線で描く
-  function edgeIsFront(sc, a, b) {
-    return sc.faces.some(f => ((a >> f.bit) & 1) === f.val && ((b >> f.bit) & 1) === f.val && faceVisible(sc, f));
+  function edgeIsFront(s3, a, b) {
+    return s3.faces.some(f => ((a >> f.bit) & 1) === f.val && ((b >> f.bit) & 1) === f.val && faceVisible(s3, f));
   }
-  function edge3D(ctx, sc, a, b, pa, pb, color, width) {
-    const front = edgeIsFront(sc, a, b);
-    ctx.setLineDash(front ? [] : [4, 3]);
+  function edge3D(ctx, s3, a, b, pa, pb, color, width) {
+    const front = edgeIsFront(s3, a, b);
+    ctx.setLineDash(front ? [] : [4 / sc, 3 / sc]);
     line(ctx, pa, pb, color, front ? width : Math.max(0.8, width * 0.8));
     ctx.setLineDash([]);
   }
   // 3D: 床グリッドと正面方向の矢印
   function drawScene3D(ctx) {
-    const sc = state.scene;
+    const s3 = state.scene;
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, L, L);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, L, L); ctx.clip();
     const N = 8;
     for (let i = -N; i <= N; i++) {
       for (const [a, b] of [[{ x: i, y: 0, z: -N }, { x: i, y: 0, z: N }], [{ x: -N, y: 0, z: i }, { x: N, y: 0, z: i }]]) {
-        const s = sc.camera.segment(a, b);
-        if (s) line(ctx, s[0], s[1], '#d4d4d8', 1 / settings.zoom);
+        const s = s3.camera.segment(a, b);
+        if (s) line(ctx, s[0], s[1], '#d4d4d8', 1);
       }
     }
     // 正面の面：4頂点がすべて配置済みのときだけ透過で塗る（未配置の頂点位置を漏らさないため）
-    const frontFace = sc.faces.find(f => f.bit === 2 && f.val === 1);
-    const frontVerts = [0, 1, 2, 3, 4, 5, 6, 7].filter(i => (i & 4));
+    const frontFace = s3.faces.find(f => f.bit === 2 && f.val === 1);
+    const frontVerts = [4, 5, 6, 7];
     if (state.scored || frontVerts.every(i => state.hint.has(i))) {
       const order = [4, 5, 7, 6]; // 面を一周する順
       ctx.beginPath();
       order.forEach((i, k) => { const p = state.sample[i]; k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
       ctx.closePath();
-      ctx.fillStyle = faceVisible(sc, frontFace) ? 'rgba(124,58,237,.14)' : 'rgba(124,58,237,.06)';
+      ctx.fillStyle = faceVisible(s3, frontFace) ? 'rgba(124,58,237,.14)' : 'rgba(124,58,237,.06)';
       ctx.fill();
     }
     // 正面方向の矢印：立方体の内側は細い破線、面を突き抜けた先は太い実線
-    const inner = sc.camera.segment(sc.center, sc.exit);
-    const outer = sc.camera.segment(sc.exit, sc.tip);
+    const inner = s3.camera.segment(s3.center, s3.exit);
+    const outer = s3.camera.segment(s3.exit, s3.tip);
     if (inner) {
-      ctx.setLineDash([3, 3]);
+      ctx.setLineDash([3 / sc, 3 / sc]);
       line(ctx, inner[0], inner[1], 'rgba(124,58,237,.7)', 1.2);
       ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(inner[0].x, inner[0].y, 3, 0, Math.PI * 2); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(inner[0].x, inner[0].y, 3 / sc, 0, Math.PI * 2); ctx.strokeStyle = '#7c3aed'; ctx.lineWidth = 1.5 / sc; ctx.stroke();
     }
     if (outer) {
       const [p0, p1] = outer;
       line(ctx, p0, p1, '#7c3aed', 2);
-      const ang = Math.atan2(p1.y - p0.y, p1.x - p0.x), h = 8;
+      const ang = Math.atan2(p1.y - p0.y, p1.x - p0.x), h = 8 / sc;
       for (const d of [Math.PI * 0.8, -Math.PI * 0.8]) {
         line(ctx, p1, { x: p1.x + h * Math.cos(ang + d), y: p1.y + h * Math.sin(ang + d) }, '#7c3aed', 2);
       }
       // 面を突き抜ける点に ×
-      const c = 4;
+      const c = 4 / sc;
       line(ctx, { x: p0.x - c, y: p0.y - c }, { x: p0.x + c, y: p0.y + c }, '#7c3aed', 1.5);
       line(ctx, { x: p0.x - c, y: p0.y + c }, { x: p0.x + c, y: p0.y - c }, '#7c3aed', 1.5);
     }
+    ctx.restore();
   }
-  // 2D: 点を重心まわりの角度順に結んで多角形にする（3点=三角形、4点=四角形…）
+  // 画像モード：見本の画像（透過率を反映）
+  function drawImage(ctx) {
+    if (!images.img || !images.fit) return;
+    const f = images.fit;
+    ctx.save();
+    ctx.globalAlpha = 1 - settings.imgOpacity / 100;
+    ctx.drawImage(images.img, f.dx, f.dy, f.dw, f.dh);
+    ctx.restore();
+  }
+  // 点を重心まわりの角度順に結んで多角形にする（3点=三角形、4点=四角形…）
   const showLines = () => !is3D() && settings.linesUI && settings.linesOn;
   function drawPolygon(ctx, pts, color) {
     if (pts.length < 2) return;
@@ -611,18 +830,48 @@
     ctx.moveTo(o[0].x, o[0].y);
     for (let i = 1; i < o.length; i++) ctx.lineTo(o[i].x, o[i].y);
     if (o.length >= 3) ctx.closePath();
-    ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.2 / sc; ctx.stroke();
+  }
+  // 画像モード：同じ色の点同士を結ぶ
+  function drawColorPolygons(ctx, pts) {
+    const groups = new Map();
+    for (const p of pts) { if (!groups.has(p.c)) groups.set(p.c, []); groups.get(p.c).push(p); }
+    for (const [c, g] of groups) drawPolygon(ctx, g, hexToRgba(c, 0.55));
+  }
+  function hexToRgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  // 選択中の点の色：同じ色相のまま少し淡くする
+  function lighten(hex) {
+    if (hex === GREEN) return GREEN_SEL;
+    const n = parseInt(hex.slice(1), 16);
+    const mix = v => Math.round(v + (255 - v) * 0.4);
+    return `rgb(${mix((n >> 16) & 255)},${mix((n >> 8) & 255)},${mix(n & 255)})`;
   }
   function dot(ctx, p, color, hollow) {
     ctx.beginPath();
-    ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2);
-    if (hollow) { ctx.lineWidth = 1.5; ctx.strokeStyle = color; ctx.stroke(); }
+    ctx.arc(p.x, p.y, DOT_PX / sc, 0, Math.PI * 2);
+    if (hollow) { ctx.lineWidth = 1.5 / sc; ctx.strokeStyle = color; ctx.stroke(); }
     else { ctx.fillStyle = color; ctx.fill(); }
+  }
+  function drawUserPoints(ctx, side) {
+    ptsOf(side).forEach((p, i) => {
+      const sel = state.selected && state.selected.side === side && state.selected.i === i;
+      const c = isImg() ? p.c : GREEN;
+      dot(ctx, p, sel ? lighten(c) : c);
+    });
   }
   function renderSample() {
     if (is3D()) return;
     const ctx = setupCanvas(els.sampleCanvas);
     drawBase(ctx);
+    if (isImg()) {
+      drawImage(ctx);
+      if (showLines()) drawColorPolygons(ctx, state.spts);
+      drawUserPoints(ctx, 'sample');
+      return;
+    }
     if (showLines()) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.45)');
     state.sample.forEach((p, i) => dot(ctx, p, state.hint.has(i) ? '#2563eb' : '#dc2626'));
   }
@@ -641,54 +890,73 @@
       }
     }
     if (showLines()) {
-      // 配置済みの点＋打った点で多角形。採点後は見本の形も薄く重ねる
-      if (state.scored) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.3)');
-      drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(22,163,74,.5)');
+      if (isImg()) {
+        if (state.scored) drawColorPolygons(ctx, state.spts);
+        drawColorPolygons(ctx, state.user);
+      } else {
+        // 配置済みの点＋打った点で多角形。採点後は見本の形も薄く重ねる
+        if (state.scored) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.3)');
+        drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(22,163,74,.5)');
+      }
     }
     state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
     if (state.scored && state.result) {
-      ctx.font = '11px sans-serif';
+      ctx.font = `${11 / sc}px sans-serif`;
       ctx.textBaseline = 'bottom';
+      // 対応相手のなかった回答点（色違いなど）はそのまま表示
+      const matchedU = new Set(state.result.pairs.map(p => p.u));
+      state.user.forEach(p => { if (!matchedU.has(p)) dot(ctx, p, isImg() ? p.c : GREEN); });
       for (const pr of state.result.pairs) {
-        const col = pr.ok ? '#16a34a' : '#dc2626';
+        const col = pr.ok ? GREEN : '#dc2626';
         // 正解位置（赤の輪）と許容範囲
         ctx.beginPath(); ctx.arc(pr.t.x, pr.t.y, tol(), 0, Math.PI * 2);
-        ctx.strokeStyle = pr.ok ? 'rgba(22,163,74,.35)' : 'rgba(220,38,38,.35)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = pr.ok ? 'rgba(22,163,74,.35)' : 'rgba(220,38,38,.35)'; ctx.lineWidth = 1 / sc; ctx.stroke();
         dot(ctx, pr.t, '#dc2626', true);
+        if (!pr.u) continue;   // 対応する回答がない
         // ずれの線
         line(ctx, pr.t, pr.u, col, 1);
         dot(ctx, pr.u, col);
         ctx.fillStyle = col;
-        ctx.fillText(Math.round(pr.d) + 'px', pr.u.x + DOT_R + 2, pr.u.y - 2);
+        ctx.fillText(Math.round(pr.d) + 'px', pr.u.x + (DOT_PX + 2) / sc, pr.u.y - 2 / sc);
       }
     } else {
-      // 選択中の点は色だけ変える（輪などを付けるとバランス確認の邪魔になるため）
-      state.user.forEach((p, i) => dot(ctx, p, i === state.selected ? '#4dcb7b' : '#16a34a'));
+      drawUserPoints(ctx, 'answer');
     }
     updateDpad();
   }
   function render() {
     renderSample();
     renderAnswer();
-    els.sampleInfo.textContent = `${state.sample.length}点`;
+    syncScroll();
+    els.sampleInfo.textContent = isImg() ? `${state.spts.length}点` : `${state.sample.length}点`;
     els.answerInfo.textContent = `${state.user.length} / ${targetCount()}点`;
-    els.btnScore.disabled = state.scored || state.user.length < targetCount();
-    els.btnUndo.disabled = state.scored || state.user.length === 0;
-    els.btnClear.disabled = state.scored || state.user.length === 0;
+    const anyPts = state.user.length + state.spts.length > 0;
+    els.btnScore.disabled = state.scored || (isImg() ? (!state.spts.length || state.user.length !== state.spts.length) : state.user.length < targetCount());
+    els.btnUndo.disabled = state.scored || !anyPts;
+    els.btnClear.disabled = state.scored || !anyPts;
     updateStatus();
     renderResult();
     renderLevel();
   }
   function updateStatus() {
+    if (eyedrop) return;
     const t = fmtTime(timerElapsed());
     if (state.scored) { els.status.textContent = `採点済み（${t}）。「次の問題」で続けてください。`; return; }
+    if (isImg()) {
+      if (!images.img) { els.status.textContent = '「フォルダを選ぶ」または「画像を選ぶ」で見本の画像を読み込んでください。'; return; }
+      const a = state.spts.length, b = state.user.length;
+      els.status.textContent = !a ? `まず見本欄に点を打ってください。 ${t}`
+        : a !== b ? `見本欄と回答欄に同じ数の点を打ってください（見本 ${a} 点／回答 ${b} 点） ${t}`
+        : `位置を調整するか「採点」を押してください。 ${t}`;
+      return;
+    }
     const rest = targetCount() - state.user.length;
     els.status.textContent = rest > 0
       ? `${is3D() ? '立方体の残りの頂点' : '回答欄'}をタップして点を打ってください（あと${rest}点） ${t}`
       : `すべて打ちました。位置を調整するか「採点」を押してください。 ${t}`;
   }
   function updateDpad() {
-    const p = state.selected !== null ? state.user[state.selected] : null;
+    const p = selPoint();
     els.dpad.hidden = !settings.dpadOn || state.scored || !p;
     if (p) els.dpadCenter.textContent = `${p.x},${p.y}`;
     if (!els.dpad.hidden) applyDpadPos();
@@ -711,40 +979,44 @@
   function renderResult() {
     if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
     const r = state.result;
-    const avg = r.pairs.length ? r.pairs.reduce((s, p) => s + p.d, 0) / r.pairs.length : 0;
+    const matched = r.pairs.filter(p => p.u);
+    const avg = matched.length ? matched.reduce((s, p) => s + p.d, 0) / matched.length : 0;
     const all = r.correct === r.total;
     els.result.className = 'show';
     els.result.innerHTML =
       `<span class="${all ? 'ok' : 'ng'}">${all ? '全問正解！' : '惜しい'}</span>　` +
       `正解 <b>${r.correct} / ${r.total}</b> 点（許容誤差 ${tol()}px）　` +
-      `平均ずれ ${Math.round(avg)}px　最大ずれ ${Math.round(Math.max(0, ...r.pairs.map(p => p.d)))}px　` +
+      `平均ずれ ${Math.round(avg)}px　最大ずれ ${Math.round(Math.max(0, ...matched.map(p => p.d)))}px　` +
       `時間 ${fmtTime(r.ms)}` +
       (r.levelUps ? `　<span class="ok">レベルアップ！ Lv.${levels[settings.mode].level}</span>` : '');
   }
 
   // ---- 採点 ----
+  // T（正解）と U（回答）を距離の合計が最小になるように対応付ける。数が違う場合は少ない方を全部割り当てる
   function assign(T, U) {
-    const n = T.length;
+    const n = T.length, m = U.length;
+    if (!n || !m) return [];
     const D = T.map(t => U.map(u => Math.hypot(t.x - u.x, t.y - u.y)));
-    if (n <= 8) {
-      // 総当たりで合計距離が最小の対応を求める
+    if (n <= 8 && m <= 8) {
+      // 総当たり（少ない側の各点に、多い側の点を重複なく割り当てる）
+      const tSmall = n <= m, k = Math.min(n, m), big = Math.max(n, m);
       let best = null, bestSum = Infinity;
-      const used = new Array(n).fill(false), cur = [];
+      const used = new Array(big).fill(false), cur = [];
       (function rec(i, sum) {
         if (sum >= bestSum) return;
-        if (i === n) { bestSum = sum; best = cur.slice(); return; }
-        for (let j = 0; j < n; j++) {
+        if (i === k) { bestSum = sum; best = cur.slice(); return; }
+        for (let j = 0; j < big; j++) {
           if (used[j]) continue;
           used[j] = true; cur.push(j);
-          rec(i + 1, sum + D[i][j]);
+          rec(i + 1, sum + (tSmall ? D[i][j] : D[j][i]));
           cur.pop(); used[j] = false;
         }
       })(0, 0);
-      return best.map((j, i) => ({ t: T[i], u: U[j], d: D[i][j] }));
+      return best.map((j, i) => tSmall ? { t: T[i], u: U[j], d: D[i][j] } : { t: T[j], u: U[i], d: D[j][i] });
     }
     // 点が多い場合は近い順に貪欲に対応付け
     const all = [];
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) all.push([D[i][j], i, j]);
+    for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) all.push([D[i][j], i, j]);
     all.sort((a, b) => a[0] - b[0]);
     const ut = new Set(), uu = new Set(), pairs = [];
     for (const [d, i, j] of all) {
@@ -754,18 +1026,36 @@
     return pairs;
   }
   function score() {
-    const targets = state.sample.filter((_, i) => !state.hint.has(i));
-    if (state.user.length < targets.length) return;
-    const pairs = assign(targets, state.user).map(p => ({ ...p, ok: p.d <= tol() }));
+    let targets, pairs;
+    if (isImg()) {
+      targets = state.spts;
+      if (!targets.length || state.user.length !== targets.length) return;
+      // 同じ色同士で対応付ける。相手がいない見本の点は不正解
+      pairs = [];
+      const colors = new Set(targets.map(p => p.c));
+      for (const c of colors) {
+        const T = targets.filter(p => p.c === c), U = state.user.filter(p => p.c === c);
+        const m = assign(T, U);
+        const done = new Set(m.map(p => p.t));
+        pairs.push(...m, ...T.filter(t => !done.has(t)).map(t => ({ t, u: null, d: Infinity })));
+      }
+    } else {
+      targets = state.sample.filter((_, i) => !state.hint.has(i));
+      if (state.user.length < targets.length) return;
+      pairs = assign(targets, state.user);
+    }
+    pairs = pairs.map(p => ({ ...p, ok: p.u !== null && p.d <= tol() }));
     const correct = pairs.filter(p => p.ok).length;
     const ms = timerStop();
     const levelUps = addProgress(settings.mode, correct);
     state.scored = true;
     state.result = { pairs, correct, total: targets.length, ms, levelUps };
+    const matched = pairs.filter(p => p.u);
     addRecord({
-      t: Date.now(), mode: settings.mode, sample: state.sample.length, answer: targets.length, tol: tol(),
-      correct, dots: targets.length, avg: pairs.reduce((s, p) => s + p.d, 0) / pairs.length, ms,
+      t: Date.now(), mode: settings.mode, sample: isImg() ? targets.length : state.sample.length, answer: targets.length, tol: tol(),
+      correct, dots: targets.length, avg: matched.length ? matched.reduce((s, p) => s + p.d, 0) / matched.length : 0, ms,
     });
+    setEyedrop(false);
     render();
     // 演出
     const all = correct === targets.length;
@@ -790,7 +1080,7 @@
     const dots = recs.reduce((s, r) => s + r.dots, 0);
     const correct = recs.reduce((s, r) => s + r.correct, 0);
     const ms = recs.reduce((s, r) => s + r.ms, 0);
-    els.stLevels.textContent = `2D Lv.${levels['2d'].level} / 3D Lv.${levels['3d'].level}`;
+    els.stLevels.textContent = `2D Lv.${levels['2d'].level} / 3D Lv.${levels['3d'].level} / 画像 Lv.${levels['img'].level}`;
     els.stProblems.textContent = problems;
     els.stDots.textContent = dots;
     els.stCorrect.textContent = correct;
@@ -798,7 +1088,7 @@
     els.stTime.textContent = fmtTime(ms);
     els.recordsEmpty.style.display = problems ? 'none' : '';
     const rows = recs.slice().reverse().slice(0, 200).map(r =>
-      `<tr><td>${fmtDate(r.t)}</td><td>${(r.mode || '2d').toUpperCase()}</td><td>${r.sample}</td><td>${r.answer}</td><td>${r.tol}px</td>` +
+      `<tr><td>${fmtDate(r.t)}</td><td>${MODE_LABEL[r.mode || '2d'] || r.mode}</td><td>${r.sample}</td><td>${r.answer}</td><td>${r.tol}px</td>` +
       `<td class="${r.correct === r.dots ? 'ok' : ''}">${r.correct} / ${r.dots}</td>` +
       `<td>${Math.round(r.avg ?? 0)}px</td><td>${fmtTime(r.ms)}</td></tr>`);
     els.recordsBody.innerHTML = rows.join('');
@@ -815,142 +1105,171 @@
   }
 
   // ---- 点の操作 ----
-  const clampL = v => Math.round(Math.min(L, Math.max(0, v)));
-  function toLogical(clientX, clientY) {
-    const r = els.answerCanvas.getBoundingClientRect();
-    return { x: clampL((clientX - r.left) / settings.zoom), y: clampL((clientY - r.top) / settings.zoom) };
-  }
-  // p の近く(半径 r 論理px)にある打った点のインデックス。なければ -1
-  function hitIndex(p, r) {
+  // p の近く(半径 r 論理px)にある点のインデックス。なければ -1
+  function hitIndex(side, p, r) {
     let best = -1, bestD = Infinity;
-    state.user.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= r && d < bestD) { best = i; bestD = d; } });
+    ptsOf(side).forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d <= r && d < bestD) { best = i; bestD = d; } });
     return best;
   }
   // 点を打つ。上限なら false
-  function placeAt(p) {
-    if (state.user.length >= targetCount()) {
+  function placeAt(side, p) {
+    if (!isImg() && ptsOf(side).length >= targetCount()) {
       els.status.textContent = '点の数が上限です。既存の点をなぞって動かすか、「最後の点を消す」を使ってください。';
       return false;
     }
-    state.user.push(p);
-    state.selected = state.user.length - 1;
+    const pts = ptsOf(side);
+    pts.push({ x: p.x, y: p.y, c: settings.color, o: ++state.order });
+    state.selected = { side, i: pts.length - 1 };
     feedback('place');
     return true;
   }
   function nudge(dx, dy) {
-    if (state.scored || state.selected === null) return;
-    const p = state.user[state.selected];
+    if (state.scored) return;
+    const p = selPoint();
+    if (!p) return;
     p.x = clampL(p.x + dx); p.y = clampL(p.y + dy);
     feedback('move');
-    renderAnswer();
-  }
-
-  // ---- 回答欄の入力（タップ／ドラッグ） ----
-  // タッチは「指を離した時に打つ」ことでスクロールと区別する（スクロールが始まると pointercancel が来る）
-  let pendingTap = null, dragFrom = null;
-  const activePointers = new Set();
-  els.answerCanvas.addEventListener('pointerdown', e => {
-    if (state.scored) return;
-    activePointers.add(e.pointerId);
-    if (activePointers.size >= 2) { pendingTap = null; dragging = null; return; } // 2本指はズーム用
-    const p = toLogical(e.clientX, e.clientY);
-    const isTouch = e.pointerType === 'touch';
-    const hit = isTouch ? 24 / settings.zoom : Math.max(DOT_R * 2, 14 / settings.zoom);
-    const i = hitIndex(p, hit);
-    if (i >= 0) {
-      // 既存の点をドラッグ（タッチの場合 touchstart 側でスクロールを止めている）
-      dragging = i; state.selected = i; dragFrom = { x: state.user[i].x, y: state.user[i].y };
-      feedback('select');
-      try { els.answerCanvas.setPointerCapture(e.pointerId); } catch (err) {}
-      renderAnswer();
-      return;
-    }
-    if (isTouch) { pendingTap = { id: e.pointerId, p }; return; }
-    // マウス／ペンはその場で打ってそのままドラッグ
-    e.preventDefault();
-    if (placeAt(p)) {
-      dragging = state.user.length - 1;
-      try { els.answerCanvas.setPointerCapture(e.pointerId); } catch (err) {}
-    }
     render();
-  });
-  els.answerCanvas.addEventListener('pointermove', e => {
-    if (dragging === null || state.scored) return;
-    e.preventDefault();
-    state.user[dragging] = toLogical(e.clientX, e.clientY);
-    renderAnswer();
-  });
-  els.answerCanvas.addEventListener('pointerup', e => {
-    activePointers.delete(e.pointerId);
-    if (dragging !== null) {
-      // 既存の点を動かしてドロップしたら配置音を鳴らす
-      const p = state.user[dragging];
-      if (dragFrom && (p.x !== dragFrom.x || p.y !== dragFrom.y)) feedback('place');
-      dragging = null; dragFrom = null; render(); return;
-    }
-    if (pendingTap && pendingTap.id === e.pointerId) {
-      const p = pendingTap.p; pendingTap = null;
-      if (!state.scored) { placeAt(p); render(); }
-    }
-  });
-  els.answerCanvas.addEventListener('pointercancel', e => {
-    activePointers.delete(e.pointerId);
-    if (pendingTap && pendingTap.id === e.pointerId) pendingTap = null;
-    if (dragging !== null) { dragging = null; dragFrom = null; render(); }
-  });
-  els.answerCanvas.addEventListener('contextmenu', e => e.preventDefault());
+  }
 
-  // ---- タッチ：点の上ならスクロールを止めてドラッグ、2本指はピンチズーム ----
-  let pinch = null;
-  function onTouchStart(e) {
-    if (e.touches.length >= 2) {
+  // ---- キャンバスの入力（タップ／ドラッグ／スクロール／ズーム） ----
+  // タッチは「指を離した時に打つ」ことでスクロールと区別する（スクロールが始まると pointercancel が来る）
+  let dragging = null, pendingTap = null, dragFrom = null, panDrag = null, spaceHeld = false, pinch = null;
+  const activePointers = new Set();
+  const hitRadius = e => (e.pointerType === 'touch' ? 22 : 10) / sc;
+  function bindCanvas(canvas, side) {
+    canvas.addEventListener('pointerdown', e => {
+      // スペース＋ドラッグ／ホイールボタンドラッグでスクロール
+      if (e.pointerType === 'mouse' && (spaceHeld || e.button === 1)) {
+        e.preventDefault();
+        panDrag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, px0: view.px, py0: view.py };
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        return;
+      }
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      activePointers.add(e.pointerId);
+      if (activePointers.size >= 2) { pendingTap = null; dragging = null; return; } // 2本指はズーム／スクロール用
+      if (!canPlace(side) || state.scored) return;
+      const p = toLogical(canvas, e.clientX, e.clientY);
+      const i = hitIndex(side, p, hitRadius(e));
+      if (eyedrop) {
+        const c = sampleColorAt(side, p, hitRadius(e));
+        if (c) setColor(c, true);
+        setEyedrop(false);
+        return;
+      }
+      if (i >= 0) {
+        // 既存の点をドラッグ（タッチの場合 touchstart 側でスクロールを止めている）
+        const q = ptsOf(side)[i];
+        dragging = { side, i, canvas }; state.selected = { side, i }; dragFrom = { x: q.x, y: q.y };
+        feedback('select');
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        render();
+        return;
+      }
+      if (e.pointerType === 'touch') { pendingTap = { id: e.pointerId, side, p }; return; }
+      // マウス／ペンはその場で打ってそのままドラッグ
       e.preventDefault();
-      pendingTap = null; dragging = null;
-      const [a, b] = [e.touches[0], e.touches[1]];
-      pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z0: settings.zoom, canvas: e.currentTarget };
-      return;
-    }
-    if (e.currentTarget === els.answerCanvas && !state.scored && e.touches.length === 1) {
-      const t = e.touches[0];
-      if (hitIndex(toLogical(t.clientX, t.clientY), 24 / settings.zoom) >= 0) e.preventDefault();
-    }
-  }
-  function onTouchMove(e) {
-    if (!pinch || e.touches.length < 2) return;
-    e.preventDefault();
-    const [a, b] = [e.touches[0], e.touches[1]];
-    const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    setZoom(pinch.z0 * d / pinch.d0, { canvas: pinch.canvas, cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2 });
-  }
-  function onTouchEnd(e) { if (e.touches.length < 2) pinch = null; }
-  for (const c of [els.sampleCanvas, els.answerCanvas]) {
-    c.addEventListener('touchstart', onTouchStart, { passive: false });
-    c.addEventListener('touchmove', onTouchMove, { passive: false });
-    c.addEventListener('touchend', onTouchEnd);
-    c.addEventListener('touchcancel', onTouchEnd);
-  }
-
-  // ズーム変更。anchor を渡すとその画面位置の下にある点が動かないようにスクロールを補正する
-  let zoomRaf = null;
-  function setZoom(z, anchor) {
-    z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
-    if (z === settings.zoom) return;
-    let fix = null;
-    if (anchor) {
-      const r = anchor.canvas.getBoundingClientRect();
-      fix = { wrap: anchor.canvas.parentElement, lx: (anchor.cx - r.left) / settings.zoom, ly: (anchor.cy - r.top) / settings.zoom, dz: z - settings.zoom };
-    }
-    settings.zoom = z;
-    els.zoom.value = z;
-    els.zoomVal.textContent = Math.round(z * 100) + '%';
-    if (zoomRaf) cancelAnimationFrame(zoomRaf);
-    zoomRaf = requestAnimationFrame(() => {
-      zoomRaf = null;
+      if (placeAt(side, p)) {
+        dragging = { side, i: ptsOf(side).length - 1, canvas };
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      }
       render();
-      if (fix) { fix.wrap.scrollLeft += fix.lx * fix.dz; fix.wrap.scrollTop += fix.ly * fix.dz; }
-      saveSettings();
     });
+    canvas.addEventListener('pointermove', e => {
+      if (panDrag && panDrag.id === e.pointerId) {
+        view.px = panDrag.px0 - (e.clientX - panDrag.x0) / sc;
+        view.py = panDrag.py0 - (e.clientY - panDrag.y0) / sc;
+        clampView(); scheduleRender();
+        return;
+      }
+      if (!dragging || dragging.canvas !== canvas || state.scored) return;
+      e.preventDefault();
+      const q = ptsOf(dragging.side)[dragging.i];
+      if (!q) return;
+      const p = toLogical(canvas, e.clientX, e.clientY);
+      q.x = p.x; q.y = p.y;
+      scheduleRender();
+    });
+    const up = e => {
+      if (panDrag && panDrag.id === e.pointerId) { panDrag = null; return; }
+      activePointers.delete(e.pointerId);
+      if (dragging && dragging.canvas === canvas) {
+        // 既存の点を動かしてドロップしたら配置音を鳴らす
+        const q = ptsOf(dragging.side)[dragging.i];
+        if (e.type === 'pointerup' && q && dragFrom && (q.x !== dragFrom.x || q.y !== dragFrom.y)) feedback('place');
+        dragging = null; dragFrom = null; render(); return;
+      }
+      if (pendingTap && pendingTap.id === e.pointerId) {
+        const t = pendingTap; pendingTap = null;
+        if (e.type === 'pointerup' && !state.scored) { placeAt(t.side, t.p); render(); }
+      }
+    };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    // 右クリック（長押し）でスポイト
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (!isImg() || !canPlace(side)) return;
+      const p = toLogical(canvas, e.clientX, e.clientY);
+      const c = sampleColorAt(side, p, 12 / sc);
+      if (c) { setColor(c, true); els.status.textContent = `色を取りました: ${c}`; }
+    });
+    // ホイールでズーム（カーソル位置を基準に）
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      setZoom(settings.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { canvas, cx: e.clientX, cy: e.clientY });
+    }, { passive: false });
+    // タッチ：点の上ならスクロールを止めてドラッグ、2本指はピンチズーム＋スクロール
+    canvas.addEventListener('touchstart', e => {
+      if (e.touches.length >= 2) {
+        e.preventDefault();
+        pendingTap = null; dragging = null;
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const r = canvas.getBoundingClientRect();
+        const cx = (a.clientX + b.clientX) / 2, cy = (a.clientY + b.clientY) / 2;
+        pinch = { canvas, d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), z0: settings.zoom,
+          lx: view.px + (cx - r.left) / sc, ly: view.py + (cy - r.top) / sc };   // 2本指の中心にある論理座標を固定する
+        return;
+      }
+      if (canPlace(side) && !state.scored && e.touches.length === 1) {
+        const t = e.touches[0];
+        if (hitIndex(side, toLogical(canvas, t.clientX, t.clientY), 22 / sc) >= 0) e.preventDefault();
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      if (!pinch || pinch.canvas !== canvas || e.touches.length < 2) return;
+      e.preventDefault();
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const r = canvas.getBoundingClientRect();
+      const cx = (a.clientX + b.clientX) / 2, cy = (a.clientY + b.clientY) / 2;
+      const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pinch.z0 * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d0));
+      settings.zoom = Math.round(z * 100) / 100;
+      sc = S / L * settings.zoom;
+      view.px = pinch.lx - (cx - r.left) / sc;
+      view.py = pinch.ly - (cy - r.top) / sc;
+      clampView();
+      els.zoom.value = settings.zoom;
+      els.zoomVal.textContent = Math.round(settings.zoom * 100) + '%';
+      scheduleRender();
+    }, { passive: false });
+    const touchEnd = e => { if (pinch && e.touches.length < 2) { pinch = null; saveSettings(); } };
+    canvas.addEventListener('touchend', touchEnd);
+    canvas.addEventListener('touchcancel', touchEnd);
   }
+  bindCanvas(els.sampleCanvas, 'sample');
+  bindCanvas(els.answerCanvas, 'answer');
+  // スペースキー押下中はスクロールモード
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) {
+      e.preventDefault();
+      if (!spaceHeld) { spaceHeld = true; document.body.classList.add('panning'); }
+    }
+  });
+  document.addEventListener('keyup', e => {
+    if (e.code === 'Space') { spaceHeld = false; document.body.classList.remove('panning'); }
+  });
+  window.addEventListener('blur', () => { spaceHeld = false; document.body.classList.remove('panning'); });
 
   // ---- 十字キー（オーバーレイ）と矢印キー ----
   let repeatTimer = null, repeatDelay = null;
@@ -1021,7 +1340,7 @@
     const step = e.shiftKey ? 5 : 1;
     const map = { ArrowUp: [0, -step], ArrowDown: [0, step], ArrowLeft: [-step, 0], ArrowRight: [step, 0] };
     const d = map[e.key];
-    if (!d || state.scored || state.selected === null) return;
+    if (!d || state.scored || !selPoint()) return;
     e.preventDefault();
     nudge(d[0], d[1]);
   });
@@ -1029,19 +1348,28 @@
   // ---- ボタン ----
   els.btnScore.addEventListener('click', score);
   els.btnUndo.addEventListener('click', () => {
-    if (state.scored || !state.user.length) return;
-    state.user.pop();
-    state.selected = state.user.length ? state.user.length - 1 : null;
+    if (state.scored) return;
+    // 最後に打った点（見本欄・回答欄をまたいで一番新しいもの）を消す
+    let side = null, idx = -1, o = -1;
+    for (const s of ['sample', 'answer']) ptsOf(s).forEach((p, i) => { if (p.o > o) { o = p.o; side = s; idx = i; } });
+    if (!side) return;
+    ptsOf(side).splice(idx, 1);
+    state.selected = null;
+    let best = null;
+    for (const s of ['sample', 'answer']) ptsOf(s).forEach((p, i) => { if (!best || p.o > best.o) best = { o: p.o, side: s, i }; });
+    if (best) state.selected = { side: best.side, i: best.i };
     feedback('remove');
     render();
   });
   els.btnClear.addEventListener('click', () => {
-    if (state.scored || !state.user.length) return;
-    state.user = []; state.selected = null;
+    if (state.scored || !(state.user.length + state.spts.length)) return;
+    state.user = []; state.spts = []; state.selected = null;
     feedback('remove');
     render();
   });
-  els.btnNext.addEventListener('click', newProblem);
+  els.btnNext.addEventListener('click', () => {
+    if (isImg() && images.files.length) loadImage(images.index + 1); else newProblem();
+  });
   els.btnClearRecords.addEventListener('click', () => {
     if (confirm('記録をすべて削除しますか？（レベルは残ります）')) { try { localStorage.removeItem(RKEY); } catch (e) {} renderRecords(); }
   });
@@ -1049,14 +1377,12 @@
 
   // ---- 設定の変更 ----
   const clampInt = (v, min, max, def) => { v = parseInt(v, 10); return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def; };
-  els.tolerance.addEventListener('change', () => {
-    settings.tolerance = clampInt(els.tolerance.value, 0, 200, defaults.tolerance);
-    els.tolerance.value = settings.tolerance; saveSettings(); render();
-  });
-  els.tol3d.addEventListener('change', () => {
-    settings.tol3d = clampInt(els.tol3d.value, 0, 200, defaults.tol3d);
-    els.tol3d.value = settings.tol3d; saveSettings(); render();
-  });
+  for (const key of ['tolerance', 'tol3d', 'tolImg']) {
+    els[key].addEventListener('change', () => {
+      settings[key] = clampInt(els[key].value, 0, 200, defaults[key]);
+      els[key].value = settings[key]; saveSettings(); render();
+    });
+  }
   function onCountChange() {
     settings.sampleCount = clampInt(els.sampleCount.value, 1, 30, defaults.sampleCount);
     settings.answerCount = clampInt(els.answerCount.value, 1, settings.sampleCount, defaults.answerCount);
@@ -1074,10 +1400,12 @@
   for (const k of ['offset3d', 'tilt3d', 'rotate3d']) {
     els[k].addEventListener('change', () => { settings[k] = els[k].checked; saveSettings(); newProblem(); });
   }
+  els.imgOpacity.addEventListener('input', () => { settings.imgOpacity = +els.imgOpacity.value; els.imgOpacityVal.textContent = settings.imgOpacity + '%'; render(); });
+  els.imgOpacity.addEventListener('change', saveSettings);
   els.gridOn.addEventListener('change', () => { settings.gridOn = els.gridOn.checked; saveSettings(); render(); });
   els.gridStep.addEventListener('change', () => { settings.gridStep = parseInt(els.gridStep.value, 10); saveSettings(); render(); });
   els.zoom.addEventListener('input', () => setZoom(parseFloat(els.zoom.value)));
-  els.layoutMode.addEventListener('change', () => { settings.layoutMode = els.layoutMode.value; saveSettings(); applyLayout(); });
+  els.layoutMode.addEventListener('change', () => { settings.layoutMode = els.layoutMode.value; saveSettings(); applyLayout(); render(); });
   els.soundOn.addEventListener('change', () => { settings.sound = els.soundOn.checked; saveSettings(); if (settings.sound) playSound('place'); });
   els.volume.addEventListener('change', () => { settings.volume = +els.volume.value; saveSettings(); playSound('place'); });
   els.vibrateOn.addEventListener('change', () => { settings.vibrate = els.vibrateOn.checked; saveSettings(); vibrate('place'); });
@@ -1087,7 +1415,7 @@
     const col = m === 'col' || (m === 'auto' && window.innerWidth < 720);
     els.boards.classList.toggle('col', col);
   }
-  window.addEventListener('resize', () => { applyLayout(); updateDpad(); updateLineUI(); });
+  window.addEventListener('resize', () => { applyLayout(); render(); updateLineUI(); });
 
   // ---- タブ／モード ----
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
@@ -1096,16 +1424,19 @@
     $('tab-practice').hidden = tab === 'records';
     $('tab-records').hidden = tab !== 'records';
     if (tab === 'records') { renderRecords(); return; }
+    setEyedrop(false);
     if (settings.mode !== tab) {
       settings.mode = tab; saveSettings();
       applyMode();
       newProblem();
-    } else applyMode();
+    } else { applyMode(); render(); }
   }));
 
   // ---- 初期化 ----
   applySettingsToUI();
   applyLayout();
+  view.px = view.py = (L - L / settings.zoom) / 2;
+  clampView();
   renderRecords();
   newProblem();
 })();

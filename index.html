@@ -58,6 +58,11 @@
   #result{margin-top:10px;font-size:16px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;display:none}
   #result.show{display:block}
   .ok{color:#16a34a;font-weight:600} .ng{color:#dc2626;font-weight:600}
+  .emph{display:inline-flex;gap:0;margin-left:8px;vertical-align:middle}
+  .emph button{font-size:13px;padding:4px 10px;border-radius:0}
+  .emph button:first-child{border-radius:6px 0 0 6px} .emph button:last-child{border-radius:0 6px 6px 0}
+  .emph button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .pts{font-size:13px;color:var(--muted)}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
   .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px}
   .card .v{font-size:22px;font-weight:600}
@@ -86,6 +91,7 @@
   #levelToast{position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-weight:800;font-size:28px;line-height:1.2;text-align:center;padding:18px 34px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);z-index:31;pointer-events:none;animation:pop 2.6s ease forwards}
   #levelToast small{display:block;font-size:14px;font-weight:600;opacity:.9;margin-top:4px}
   #levelToast[hidden]{display:none}
+  #levelToast.bonus{background:linear-gradient(135deg,#0ea5e9,#2563eb);font-size:24px}
   @keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.6)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}20%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1)}}
 </style>
 </head>
@@ -113,6 +119,7 @@
       <label data-modes="3d"><input type="checkbox" id="offset3d"> ずらす</label>
       <label data-modes="3d"><input type="checkbox" id="tilt3d"> 浮かせる（傾ける）</label>
       <label data-modes="3d"><input type="checkbox" id="rotate3d"> 回転</label>
+      <label data-modes="3d"><input type="checkbox" id="below3d"> 床下からも見る</label>
       <!-- 画像 -->
       <label data-modes="img">許容誤差 <input type="number" id="tolImg" min="0" max="200" value="5"> px</label>
       <label data-modes="img">画像の透過率 <input type="range" id="imgOpacity" min="0" max="100" step="5" value="0"> <span id="imgOpacityVal">0%</span></label>
@@ -250,7 +257,7 @@
   const $ = id => document.getElementById(id);
   const els = {};
   for (const id of ['tolerance', 'sampleCount', 'answerCount', 'gridOn', 'gridStep', 'zoom', 'zoomVal', 'layoutMode', 'boards',
-    'tol3d', 'count3d', 'fov', 'fovVal', 'offset3d', 'tilt3d', 'rotate3d',
+    'tol3d', 'count3d', 'fov', 'fovVal', 'offset3d', 'tilt3d', 'rotate3d', 'below3d',
     'tolImg', 'imgOpacity', 'imgOpacityVal', 'imgFolder', 'imgFiles', 'btnPrevImg', 'btnNextImg', 'imgName', 'colorPick', 'btnEyedrop', 'palette', 'btnClearPalette',
     'soundOn', 'volume', 'vibrateOn', 'vibrateLabel', 'dpadOn', 'dotSize', 'dotSizeVal', 'linesUI', 'lineUI', 'btnLines',
     'lvLabel', 'lvFill', 'lvProg', 'sampleCanvas', 'answerCanvas', 'sampleTitle', 'sampleInfo', 'answerInfo', 'answerTitle',
@@ -261,7 +268,7 @@
   const defaults = {
     mode: '2d',
     tolerance: 5, sampleCount: 3, answerCount: 1, gridOn: false, gridStep: 20, layoutMode: 'auto', linesUI: false, linesOn: true, linePos: null,
-    tol3d: 8, count3d: 1, fov: 30, offset3d: true, tilt3d: false, rotate3d: false,
+    tol3d: 8, count3d: 1, fov: 30, offset3d: true, tilt3d: false, rotate3d: false, below3d: false,
     tolImg: 5, imgOpacity: 0, color: GREEN, palette: [],
     zoom: 1, dpadOn: true, dpadPos: null, dotSize: 5, sound: true, volume: 0.7, vibrate: true,
   };
@@ -284,6 +291,7 @@
     els.offset3d.checked = settings.offset3d;
     els.tilt3d.checked = settings.tilt3d;
     els.rotate3d.checked = settings.rotate3d;
+    els.below3d.checked = settings.below3d;
     els.tolImg.value = settings.tolImg;
     els.imgOpacity.value = settings.imgOpacity; els.imgOpacityVal.textContent = settings.imgOpacity + '%';
     els.colorPick.value = settings.color;
@@ -312,6 +320,7 @@
   const SOUND_FILES = {
     place: '点配置時', select: '配置済点の再選択時', move: '矢印移動時', remove: '点消したとき',
     clear: 'クリア時', fail: '失敗', levelup: 'レベルアップ時',
+    ptOk: '点正解', ptPerfect: '点パーフェクト', ptNg: '点不正解', timeBonus: '時間ボーナス',
   };
   const sounds = {};
   for (const [k, name] of Object.entries(SOUND_FILES)) {
@@ -327,7 +336,7 @@
     a.volume = settings.volume;
     try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
   }
-  const VIB = { place: 15, select: 10, move: 6, remove: 25, clear: [40, 60, 40], fail: 120, levelup: [60, 60, 60, 60, 160] };
+  const VIB = { place: 15, select: 10, move: 6, remove: 25, clear: [40, 60, 40], fail: 120, levelup: [60, 60, 60, 60, 160], ptOk: 12, ptPerfect: [30, 40, 60], ptNg: 40, timeBonus: [50, 50, 120] };
   function vibrate(k) {
     if (!settings.vibrate || !('vibrate' in navigator)) return;
     try { navigator.vibrate(VIB[k] || 10); } catch (e) {}
@@ -351,16 +360,23 @@
     const s = levels[settings.mode], need = needFor(s.level);
     els.lvLabel.textContent = `${MODE_LABEL[settings.mode]} Lv.${s.level}`;
     els.lvFill.style.width = Math.min(100, s.progress / need * 100) + '%';
-    els.lvProg.textContent = `次のレベルまで ${s.progress} / ${need}`;
+    els.lvProg.textContent = `次のレベルまで ${s.progress} / ${need} pt`;
   }
   let toastTimer = null;
-  function showLevelUp(level) {
-    els.levelToast.innerHTML = `LEVEL UP!<br>${MODE_LABEL[settings.mode]} Lv.${level}<small>次のレベルまで ${needFor(level)} 点</small>`;
+  function showToast(html, cls) {
+    els.levelToast.className = cls || '';
+    els.levelToast.innerHTML = html;
     els.levelToast.hidden = true;
     void els.levelToast.offsetWidth; // アニメーションをやり直す
     els.levelToast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { els.levelToast.hidden = true; }, 2700);
+  }
+  function showLevelUp(level) {
+    showToast(`LEVEL UP!<br>${MODE_LABEL[settings.mode]} Lv.${level}<small>次のレベルまで ${needFor(level)} pt</small>`);
+  }
+  function showTimeBonus(bonus, totalMs) {
+    showToast(`⏱ 時間ボーナス +${bonus}pt<small>${MODE_LABEL[settings.mode]} の練習時間が合計 ${Math.floor(totalMs / 60000)} 分に到達</small>`, 'bonus');
   }
 
   // ---- 紙吹雪 ----
@@ -404,6 +420,7 @@
     scene: null,       // 3D の描画用データ
     scored: false,
     result: null,
+    reveal: 0,         // 答え合わせで表示済みの点の数（1点ずつ順番に表示する）
     order: 0,
     // タイマー
     startAt: 0, accum: 0, running: false,
@@ -432,6 +449,9 @@
     state.selected = null;
     state.scored = false;
     state.result = null;
+    state.reveal = 0;
+    clearInterval(revealTimer); revealTimer = null;
+    fx.length = 0;
     dragging = null;
     timerStart();
   }
@@ -612,7 +632,9 @@
       // カメラ：大きさと角度はランダム
       const size = rand(55, 115);            // 立方体1辺のおおよその画面サイズ(px)
       const dist = focal / size;
-      const yaw = rand(0, Math.PI * 2), pitch = rand(12, 55) * Math.PI / 180;
+      // 見下ろし角。「床下からも見る」なら半分の確率で床面より下から見上げる（グリッドは透けるので立方体は見える）
+      const below = settings.below3d && Math.random() < 0.5;
+      const yaw = rand(0, Math.PI * 2), pitch = (below ? -1 : 1) * rand(12, 55) * Math.PI / 180;
       const target = { x: base.x + rand(-0.6, 0.6), y: base.y + 0.5, z: base.z + rand(-0.6, 0.6) };
       const camPos = { x: target.x + dist * Math.cos(pitch) * Math.sin(yaw), y: target.y + dist * Math.sin(pitch), z: target.z + dist * Math.cos(pitch) * Math.cos(yaw) };
       const camera = makeCamera(camPos, target, focal);
@@ -678,6 +700,8 @@
     for (const c of [els.sampleCanvas, els.answerCanvas]) {
       const wrap = c.parentElement.parentElement, spacer = c.parentElement;
       wrap.style.width = wrap.style.height = S + 'px';
+      // 等倍以下ではスクロール不要。overflow:auto のままだと一度出たスクロールバーが残ることがあるので明示的に切り替える
+      wrap.style.overflow = settings.zoom > 1 ? 'auto' : 'hidden';
       spacer.style.width = spacer.style.height = ext + 'px';
       const sx = Math.max(0, view.px) * sc, sy = Math.max(0, view.py) * sc;
       if (Math.abs(wrap.scrollLeft - sx) > 0.5) wrap.scrollLeft = sx;
@@ -838,7 +862,7 @@
   }
   // 点を重心まわりの角度順に結んで多角形にする（3点=三角形、4点=四角形…）
   const showLines = () => !is3D() && settings.linesUI && settings.linesOn;
-  function drawPolygon(ctx, pts, color) {
+  function drawPolygon(ctx, pts, color, width) {
     if (pts.length < 2) return;
     const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length, cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
     const o = pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
@@ -846,13 +870,51 @@
     ctx.moveTo(o[0].x, o[0].y);
     for (let i = 1; i < o.length; i++) ctx.lineTo(o[i].x, o[i].y);
     if (o.length >= 3) ctx.closePath();
-    ctx.strokeStyle = color; ctx.lineWidth = 1.2 / sc; ctx.stroke();
+    ctx.strokeStyle = color; ctx.lineWidth = (width || 1.2) / sc; ctx.stroke();
   }
   // 画像モード：同じ色の点同士を結ぶ
-  function drawColorPolygons(ctx, pts) {
+  function drawColorPolygons(ctx, pts, alpha, width) {
     const groups = new Map();
     for (const p of pts) { if (!groups.has(p.c)) groups.set(p.c, []); groups.get(p.c).push(p); }
-    for (const [c, g] of groups) drawPolygon(ctx, g, hexToRgba(c, 0.55));
+    for (const [c, g] of groups) drawPolygon(ctx, g, hexToRgba(c, alpha ?? 0.55), width);
+  }
+  // ---- 答え合わせのエフェクト（正解の点で輪が広がる。0px はさらに派手に） ----
+  const fx = [];
+  let fxRaf = null;
+  function addFx(p, big) {
+    fx.push({ x: p.x, y: p.y, t0: performance.now(), big });
+    if (!fxRaf) {
+      const loop = () => {
+        fxRaf = null;
+        const now = performance.now();
+        for (let i = fx.length - 1; i >= 0; i--) if (now - fx[i].t0 > (fx[i].big ? 1000 : 500)) fx.splice(i, 1);
+        render();
+        if (fx.length) fxRaf = requestAnimationFrame(loop);
+      };
+      fxRaf = requestAnimationFrame(loop);
+    }
+  }
+  function drawFx(ctx) {
+    const now = performance.now();
+    for (const f of fx) {
+      const dur = f.big ? 1000 : 500, t = Math.min(1, (now - f.t0) / dur);
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = f.big ? '#f59e0b' : GREEN; ctx.lineWidth = (f.big ? 3 : 2) / sc;
+      ctx.beginPath(); ctx.arc(f.x, f.y, (6 + 30 * t) / sc, 0, Math.PI * 2); ctx.stroke();
+      if (f.big) {
+        ctx.beginPath(); ctx.arc(f.x, f.y, (6 + 55 * t) / sc, 0, Math.PI * 2); ctx.stroke();
+        const cols = ['#f59e0b', '#f43f5e', '#3b82f6', '#10b981'];
+        for (let i = 0; i < 12; i++) {
+          const a = i / 12 * Math.PI * 2 + t * 1.5, r = (8 + 60 * t) / sc;
+          ctx.fillStyle = cols[i % 4];
+          ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * r, f.y + Math.sin(a) * r, 3 / sc, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = '#f59e0b'; ctx.font = `bold ${14 / sc}px sans-serif`; ctx.textBaseline = 'bottom';
+        ctx.fillText('PERFECT +3pt', f.x + 8 / sc, f.y - (10 + 20 * t) / sc);
+      }
+      ctx.restore();
+    }
   }
   function hexToRgba(hex, a) {
     const n = parseInt(hex.slice(1), 16);
@@ -906,37 +968,58 @@
         for (const [a, b] of CUBE_EDGES) if (pos[a] && pos[b]) edge3D(ctx, state.scene, a, b, pos[a], pos[b], '#94a3b8', 1.4);
       }
     }
-    if (showLines()) {
-      if (isImg()) {
-        if (state.scored) drawColorPolygons(ctx, state.spts);
-        drawColorPolygons(ctx, state.user);
-      } else {
-        // 配置済みの点＋打った点で多角形。採点後は見本の形も薄く重ねる
-        if (state.scored) drawPolygon(ctx, state.sample, 'rgba(220,38,38,.3)');
-        drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(220,38,38,.45)');
-      }
-    }
-    state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
     if (state.scored && state.result) {
+      // ---- 答え合わせ表示：正解側／回答側のどちらを強調するか切り替えられる ----
+      const R = state.result;
+      const eS = R.emphasis === 'sample', eA = !eS;
+      const aS = eS ? 1 : 0.3, aA = eA ? 1 : 0.3;      // 強調していない側は薄く
+      const wS = eS ? 1.8 : 1, wA = eA ? 1.8 : 1;
+      const revealed = R.pairs.slice(0, state.reveal);
+      // 形（線）
+      if (is3D()) {
+        // 回答側の立方体：配置済みの頂点＋対応付けられた回答点
+        const tIndex = new Map(); state.sample.forEach((p, i) => tIndex.set(p, i));
+        const upos = state.sample.map((p, i) => state.hint.has(i) ? p : null);
+        for (const pr of revealed) if (pr.u) upos[tIndex.get(pr.t)] = pr.u;
+        for (const [a, b] of CUBE_EDGES) edge3D(ctx, state.scene, a, b, state.sample[a], state.sample[b], `rgba(220,38,38,${0.8 * aS})`, wS);
+        for (const [a, b] of CUBE_EDGES) if (upos[a] && upos[b]) edge3D(ctx, state.scene, a, b, upos[a], upos[b], `rgba(22,163,74,${0.9 * aA})`, wA);
+      } else if (showLines()) {
+        if (isImg()) { drawColorPolygons(ctx, state.spts, 0.7 * aS, wS); drawColorPolygons(ctx, state.user, 0.7 * aA, wA); }
+        else {
+          drawPolygon(ctx, state.sample, `rgba(220,38,38,${0.7 * aS})`, wS);
+          drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), `rgba(22,163,74,${0.7 * aA})`, wA);
+        }
+      }
+      state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
       ctx.font = `${11 / sc}px sans-serif`;
       ctx.textBaseline = 'bottom';
-      // 対応相手のなかった回答点（色違いなど）はそのまま表示
-      const matchedU = new Set(state.result.pairs.map(p => p.u));
-      state.user.forEach(p => { if (!matchedU.has(p)) dot(ctx, p, isImg() ? p.c : GREEN); });
-      for (const pr of state.result.pairs) {
+      // まだ判定を表示していない回答点と、対応相手のなかった回答点はそのまま表示
+      const shownU = new Set(revealed.map(p => p.u));
+      state.user.forEach(p => { if (!shownU.has(p)) dot(ctx, p, isImg() ? p.c : is3D() ? GREEN : RED); });
+      for (const pr of revealed) {
         const col = pr.ok ? GREEN : '#dc2626';
         // 正解位置（赤の輪）と許容範囲
+        ctx.globalAlpha = aS;
         ctx.beginPath(); ctx.arc(pr.t.x, pr.t.y, tol(), 0, Math.PI * 2);
         ctx.strokeStyle = pr.ok ? 'rgba(22,163,74,.35)' : 'rgba(220,38,38,.35)'; ctx.lineWidth = 1 / sc; ctx.stroke();
         dot(ctx, pr.t, '#dc2626', true);
+        ctx.globalAlpha = 1;
         if (!pr.u) continue;   // 対応する回答がない
         // ずれの線
         line(ctx, pr.t, pr.u, col, 1);
+        ctx.globalAlpha = aA;
         dot(ctx, pr.u, col);
+        ctx.globalAlpha = 1;
         ctx.fillStyle = col;
         ctx.fillText(Math.round(pr.d) + 'px', pr.u.x + (dotPx() + 2) / sc, pr.u.y - 2 / sc);
       }
+      drawFx(ctx);
     } else {
+      if (showLines()) {
+        if (isImg()) drawColorPolygons(ctx, state.user);
+        else drawPolygon(ctx, state.sample.filter((_, i) => state.hint.has(i)).concat(state.user), 'rgba(220,38,38,.45)');
+      }
+      state.sample.forEach((p, i) => { if (state.hint.has(i)) dot(ctx, p, '#2563eb'); });
       drawUserPoints(ctx, 'answer');
     }
     updateDpad();
@@ -997,17 +1080,29 @@
   function renderResult() {
     if (!state.scored || !state.result) { els.result.className = ''; els.result.innerHTML = ''; return; }
     const r = state.result;
+    els.result.className = 'show';
+    if (state.reveal < r.pairs.length) { els.result.innerHTML = `答え合わせ中… ${state.reveal} / ${r.pairs.length}`; return; }
     const matched = r.pairs.filter(p => p.u);
     const avg = matched.length ? matched.reduce((s, p) => s + p.d, 0) / matched.length : 0;
     const all = r.correct === r.total;
-    els.result.className = 'show';
+    const breakdown = [`正解 ${r.correct}pt`];
+    if (r.perfect) breakdown.push(`パーフェクト(0px) ${r.perfect}×+2pt`);
+    if (r.timeBonus) breakdown.push(`時間ボーナス +${r.timeBonus}pt`);
     els.result.innerHTML =
       `<span class="${all ? 'ok' : 'ng'}">${all ? '全問正解！' : '惜しい'}</span>　` +
       `正解 <b>${r.correct} / ${r.total}</b> 点（許容誤差 ${tol()}px）　` +
       `平均ずれ ${Math.round(avg)}px　最大ずれ ${Math.round(Math.max(0, ...matched.map(p => p.d)))}px　` +
       `時間 ${fmtTime(r.ms)}` +
-      (r.levelUps ? `　<span class="ok">レベルアップ！ Lv.${levels[settings.mode].level}</span>` : '');
+      (r.levelUps ? `　<span class="ok">レベルアップ！ Lv.${levels[settings.mode].level}</span>` : '') +
+      `<br><span class="pts">獲得 <b>${r.pts}pt</b>（${breakdown.join(' ＋ ')}）</span>` +
+      `<span class="emph">強調：<button data-emph="sample" class="${r.emphasis === 'sample' ? 'on' : ''}">正解</button><button data-emph="answer" class="${r.emphasis === 'answer' ? 'on' : ''}">回答</button></span>`;
   }
+  els.result.addEventListener('click', e => {
+    const b = e.target.closest('button[data-emph]');
+    if (!b || !state.result) return;
+    state.result.emphasis = b.dataset.emph;
+    render();
+  });
 
   // ---- 採点 ----
   // T（正解）と U（回答）を距離の合計が最小になるように対応付ける。数が違う場合は少ない方を全部割り当てる
@@ -1064,23 +1159,57 @@
     }
     pairs = pairs.map(p => ({ ...p, ok: p.u !== null && p.d <= tol() }));
     const correct = pairs.filter(p => p.ok).length;
+    const perfect = pairs.filter(p => p.ok && p.d === 0).length;   // ずれ 0px はさらに +2pt（計3pt）
     const ms = timerStop();
-    const levelUps = addProgress(settings.mode, correct);
+    // 時間ボーナス：このモードの合計練習時間が10分を超えるごとに +5pt
+    const prevTotal = loadRecords().filter(r => (r.mode || '2d') === settings.mode).reduce((s, r) => s + r.ms, 0);
+    const timeBonus = (Math.floor((prevTotal + ms) / 600000) - Math.floor(prevTotal / 600000)) * 5;
+    const pts = correct + perfect * 2 + timeBonus;
     state.scored = true;
-    state.result = { pairs, correct, total: targets.length, ms, levelUps };
+    state.result = { pairs, correct, perfect, total: targets.length, ms, pts, timeBonus, totalMs: prevTotal + ms, levelUps: 0, emphasis: 'answer' };
     const matched = pairs.filter(p => p.u);
     addRecord({
       t: Date.now(), mode: settings.mode, sample: isImg() ? targets.length : state.sample.length, answer: targets.length, tol: tol(),
       correct, dots: targets.length, avg: matched.length ? matched.reduce((s, p) => s + p.d, 0) / matched.length : 0, ms,
     });
     setEyedrop(false);
+    startReveal();
+  }
+  // 1点ずつ順番に判定を表示し、正解ならその点でエフェクト
+  let revealTimer = null;
+  function startReveal() {
+    const R = state.result;
+    state.reveal = 0;
+    clearInterval(revealTimer);
+    const step = () => {
+      const pr = R.pairs[state.reveal];
+      state.reveal++;
+      if (pr) {
+        const perfect = pr.ok && pr.d === 0;
+        if (pr.ok) addFx(pr.u, perfect);
+        feedback(perfect ? 'ptPerfect' : pr.ok ? 'ptOk' : 'ptNg');
+      }
+      render();
+      if (state.reveal >= R.pairs.length) { clearInterval(revealTimer); revealTimer = null; setTimeout(finishScore, 350); }
+    };
+    step();
+    if (state.reveal < R.pairs.length) revealTimer = setInterval(step, 400);
+  }
+  function finishScore() {
+    const R = state.result;
+    if (!R || !state.scored) return;
+    R.levelUps = addProgress(settings.mode, R.pts);
     render();
-    // 演出
-    const all = correct === targets.length;
-    if (all) { feedback('clear'); confetti.burst(140); }
-    else if (!levelUps) feedback('fail');
-    if (levelUps) {
-      setTimeout(() => { feedback('levelup'); confetti.burst(220); showLevelUp(levels[settings.mode].level); }, all ? 700 : 100);
+    // 成功／失敗の音 → 1.5秒後に時間ボーナス（あれば） → さらに1.5秒後にレベルアップ（あれば）
+    const all = R.correct === R.total;
+    if (all) { feedback('clear'); confetti.burst(140); } else feedback('fail');
+    let delay = 1500;
+    if (R.timeBonus) {
+      setTimeout(() => { feedback('timeBonus'); showTimeBonus(R.timeBonus, R.totalMs); }, delay);
+      delay += 1500;
+    }
+    if (R.levelUps) {
+      setTimeout(() => { feedback('levelup'); confetti.burst(220); showLevelUp(levels[settings.mode].level); }, delay);
     }
   }
 
@@ -1416,7 +1545,7 @@
   });
   els.fov.addEventListener('input', () => { settings.fov = +els.fov.value; els.fovVal.textContent = settings.fov + '°'; });
   els.fov.addEventListener('change', () => { saveSettings(); newProblem(); });
-  for (const k of ['offset3d', 'tilt3d', 'rotate3d']) {
+  for (const k of ['offset3d', 'tilt3d', 'rotate3d', 'below3d']) {
     els[k].addEventListener('change', () => { settings[k] = els[k].checked; saveSettings(); newProblem(); });
   }
   els.imgOpacity.addEventListener('input', () => { settings.imgOpacity = +els.imgOpacity.value; els.imgOpacityVal.textContent = settings.imgOpacity + '%'; render(); });
